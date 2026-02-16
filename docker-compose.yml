@@ -1,0 +1,36 @@
+services:
+  # OpenCode server - AI coding agent
+  opencode:
+    image: ghcr.io/anomalyco/opencode:latest
+    container_name: opencode-server
+    environment:
+      - OPENCODE_SERVER_PASSWORD=${OPENCODE_PASSWORD:-changeme}
+    volumes:
+      - ${PROJECT_DIR:-./workspace}:/workspace
+    working_dir: /workspace
+    command: ["serve", "--hostname=0.0.0.0", "--port=4096"]
+    restart: unless-stopped
+
+  # LINE bot - bridges LINE messages to OpenCode
+  line-bot:
+    build: .
+    container_name: opencode-line-bot
+    environment:
+      - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN}
+      - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET}
+      - PORT=3000
+      - OPENCODE_URL=http://opencode:4096
+      - OPENCODE_PASSWORD=${OPENCODE_PASSWORD:-changeme}
+      - OPENCODE_DIR=/workspace
+    depends_on:
+      - opencode
+    restart: unless-stopped
+
+  # Cloudflare tunnel - exposes LINE webhook to internet
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: opencode-line-tunnel
+    command: tunnel --no-autoupdate --url http://line-bot:3000
+    depends_on:
+      - line-bot
+    restart: unless-stopped
