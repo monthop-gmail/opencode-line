@@ -30,7 +30,7 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: opencode-line-tunnel
-    command: tunnel --no-autoupdate --url http://line-bot:3000
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - line-bot
     restart: unless-stopped
