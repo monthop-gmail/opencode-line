@@ -69,6 +69,36 @@ async function abortSession(sessionId: string): Promise<void> {
   await opencodeRequest("POST", `/session/${sessionId}/abort`).catch(() => {})
 }
 
+// --- Handle incoming LINE Image message ---
+async function handleImageMessage(
+  userId: string,
+  messageId: string,
+  replyToken: string,
+): Promise<void> {
+  console.log(`Image message from ${userId}, messageId: ${messageId}`)
+
+  // Send acknowledgment first
+  await lineClient.replyMessage({
+    replyToken,
+    messages: [{ type: "text", text: "Received your image! Analyzing..." }],
+  }).catch(() => {})
+
+  try {
+    // Download image from LINE
+    const imageBuffer = await lineClient.getMessageContent(messageId)
+    
+    // Convert to base64
+    const base64 = Buffer.from(imageBuffer).toString("base64")
+    
+    // Send to OpenCode - note: OpenCode may not support image input directly
+    // For now, we'll just acknowledge receipt
+    await sendMessage(userId, `Image received! (${base64.length} bytes)\n\nNote: Image analysis depends on OpenCode's vision capabilities.`)
+  } catch (err: any) {
+    console.error("Error handling image:", err?.message)
+    await sendMessage(userId, `Failed to process image: ${err?.message?.slice(0, 200) ?? "Unknown error"}`)
+  }
+}
+
 // --- Wait for OpenCode server ---
 async function waitForOpenCode(maxRetries = 30, delayMs = 2000): Promise<boolean> {
   for (let i = 0; i < maxRetries; i++) {
@@ -163,7 +193,7 @@ async function handleTextMessage(
   text: string,
   replyToken: string,
 ): Promise<void> {
-  console.log(`Message from ${userId}: ${text}`)
+  console.log(`Text message from ${userId}: ${text}`)
 
   // Special commands
   if (text.toLowerCase() === "/new") {
@@ -283,6 +313,7 @@ Bun.serve({
 
       // Process events async (return 200 immediately so LINE doesn't retry)
       for (const event of parsed.events) {
+        // Handle text messages
         if (
           event.type === "message" &&
           event.message?.type === "text" &&
@@ -293,7 +324,22 @@ Bun.serve({
             event.message.text,
             event.replyToken,
           ).catch((err) => {
-            console.error("Error handling message:", err)
+            console.error("Error handling text message:", err)
+          })
+        }
+        
+        // Handle image messages
+        if (
+          event.type === "message" &&
+          event.message?.type === "image" &&
+          event.source?.userId
+        ) {
+          handleImageMessage(
+            event.source.userId,
+            event.message.id,
+            event.replyToken,
+          ).catch((err) => {
+            console.error("Error handling image message:", err)
           })
         }
       }
