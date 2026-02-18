@@ -63,9 +63,15 @@ async function createSession(title: string): Promise<{ id: string }> {
 
 const PROMPT_TIMEOUT_MS = Number(process.env.PROMPT_TIMEOUT_MS ?? 120_000) // 2 min
 
-async function sendPrompt(sessionId: string, text: string): Promise<any> {
+async function sendPrompt(sessionId: string, text: string, isGroup: boolean = false): Promise<any> {
   // Prefix to prevent interactive question tool (blocks the API)
-  const prefixed = `[IMPORTANT: Always respond directly with text. Do NOT use the question tool to ask clarifying questions. If unsure, make your best guess and explain your assumptions.]\n\n${text}`
+  let prefixed = `[IMPORTANT: Always respond directly with text. Do NOT use the question tool to ask clarifying questions. If unsure, make your best guess and explain your assumptions.]\n\n`
+
+  if (isGroup) {
+    prefixed += `[GROUP CHAT: You are in a group chat. If this message is clearly NOT directed at you (just people chatting with each other, unrelated conversations), respond with exactly [SKIP] and nothing else. If the message mentions you, asks a question, or could be directed at you, respond normally.]\n\n`
+  }
+
+  prefixed += text
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), PROMPT_TIMEOUT_MS)
@@ -499,10 +505,16 @@ async function handleTextMessage(
   // Send prompt to OpenCode
   console.log("Sending to OpenCode:", text)
   try {
-    const result = await sendPrompt(session.sessionId, text)
+    const result = await sendPrompt(session.sessionId, text, isGroup)
 
     // Extract response from all part types
     const responseText = extractResponse(result)
+
+    // In group: skip if AI decides message isn't for it
+    if (isGroup && responseText.trim() === "[SKIP]") {
+      console.log("Skipped (not directed at bot)")
+      return
+    }
 
     console.log(`Response length: ${responseText.length} chars`)
     await sendMessage(sessionKey || userId, responseText, replyToken)
@@ -600,12 +612,6 @@ Bun.serve({
           event.source?.userId
         ) {
           const isGroup = !!event.source?.groupId || !!event.source?.roomId
-
-          // In group: only respond if bot is mentioned or command
-          if (isGroup && !isBotMentioned(event)) {
-            continue
-          }
-
           const sessionKey = getSessionKey(event)
 
           handleTextMessage(
