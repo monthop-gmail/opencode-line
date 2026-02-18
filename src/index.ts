@@ -320,6 +320,26 @@ async function handleTextMessage(
     return
   }
 
+  // About command
+  if (text.toLowerCase() === "/about" || text.toLowerCase() === "/who") {
+    const aboutMsg = `🧑‍💻 สวัสดีครับ!
+
+ผมคือ OpenCode AI Bot
+🤖 Model: Big-Pickle (opencode/big-pickle)
+📝 Context: 200,000 tokens
+💰 ฟรี!
+
+ช่วยเขียน code สร้างโปรเจกต์ และตอบคำถามได้
+
+💬 คุยส่วนตัว: ${lineOAUrl}`
+    
+    await lineClient.replyMessage({
+      replyToken,
+      messages: [{ type: "text", text: aboutMsg }],
+    })
+    return
+  }
+
   // Get or create OpenCode session
   let session = sessionKey ? sessions.get(sessionKey) : null
 
