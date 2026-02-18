@@ -24,13 +24,14 @@ console.log("- OpenCode dir:", opencodeDir)
 
 // --- LINE Client ---
 const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken })
+const lineBlobClient = new line.messagingApi.MessagingApiBlobClient({ channelAccessToken })
 
 // --- OpenCode HTTP Client (direct fetch, no SDK needed) ---
 const opencodeAuth = opencodePassword
   ? "Basic " + Buffer.from(`opencode:${opencodePassword}`).toString("base64")
   : ""
 
-async function opencodeRequest(method: string, path: string, body?: unknown): Promise<any> {
+async function opencodeRequest(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<any> {
   const headers: Record<string, string> = {
     "x-opencode-directory": encodeURIComponent(opencodeDir),
   }
@@ -41,7 +42,7 @@ async function opencodeRequest(method: string, path: string, body?: unknown): Pr
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(300_000), // 5 min for long prompts
+    signal: signal ?? AbortSignal.timeout(300_000),
   })
 
   const text = await resp.text()
@@ -60,14 +61,81 @@ async function createSession(title: string): Promise<{ id: string }> {
   return opencodeRequest("POST", "/session", { title })
 }
 
+const PROMPT_TIMEOUT_MS = Number(process.env.PROMPT_TIMEOUT_MS ?? 120_000) // 2 min
+
 async function sendPrompt(sessionId: string, text: string): Promise<any> {
-  return opencodeRequest("POST", `/session/${sessionId}/message`, {
-    parts: [{ type: "text", text }],
-  })
+  // Prefix to prevent interactive question tool (blocks the API)
+  const prefixed = `[IMPORTANT: Always respond directly with text. Do NOT use the question tool to ask clarifying questions. If unsure, make your best guess and explain your assumptions.]\n\n${text}`
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), PROMPT_TIMEOUT_MS)
+
+  try {
+    const result = await opencodeRequest("POST", `/session/${sessionId}/message`, {
+      parts: [{ type: "text", text: prefixed }],
+    }, controller.signal)
+    clearTimeout(timeout)
+    return result
+  } catch (err: any) {
+    clearTimeout(timeout)
+    // On timeout, try to get partial response from messages
+    if (err?.name === "AbortError" || err?.message?.includes("abort")) {
+      console.log("Prompt timed out, fetching partial response...")
+      await abortSession(sessionId)
+      return fetchLastAssistantMessage(sessionId)
+    }
+    throw err
+  }
+}
+
+async function fetchLastAssistantMessage(sessionId: string): Promise<any> {
+  try {
+    const messages = await opencodeRequest("GET", `/session/${sessionId}/message`)
+    if (!Array.isArray(messages)) return null
+    // Find last assistant message
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.info?.role === "assistant") return messages[i]
+    }
+  } catch {
+    // ignore
+  }
+  return null
 }
 
 async function abortSession(sessionId: string): Promise<void> {
   await opencodeRequest("POST", `/session/${sessionId}/abort`).catch(() => {})
+}
+
+// --- Extract response text from all part types ---
+function extractResponse(result: any): string {
+  if (!result?.parts) return "Done. (no text output)"
+
+  const parts: string[] = []
+
+  for (const p of result.parts) {
+    // Direct text response
+    if (p.type === "text" && p.text) {
+      parts.push(p.text)
+    }
+    // Tool question - extract the question text for user
+    if (p.type === "tool" && p.tool === "question" && p.state?.input?.questions) {
+      for (const q of p.state.input.questions) {
+        let qText = q.question || ""
+        if (q.options?.length) {
+          qText += "\n" + q.options.map((o: any, i: number) => `${i + 1}. ${o.label}${o.description ? ` - ${o.description}` : ""}`).join("\n")
+        }
+        if (qText) parts.push(qText)
+      }
+    }
+    // Reasoning - use as fallback if no text parts
+    if (p.type === "reasoning" && p.text) {
+      if (!result.parts.some((x: any) => x.type === "text" && x.text)) {
+        parts.push(p.text)
+      }
+    }
+  }
+
+  return parts.join("\n\n") || "Done. (no text output)"
 }
 
 // --- Handle incoming LINE Image message ---
@@ -87,15 +155,28 @@ async function handleImageMessage(
   }).catch(() => {})
 
   try {
-    // Download image from LINE
-    const imageBuffer = await lineClient.getMessageContent(messageId)
-    
-    // Convert to base64
-    const base64 = Buffer.from(imageBuffer).toString("base64")
-    
-    // Send to OpenCode - note: OpenCode may not support image input directly
-    // For now, we'll just acknowledge receipt
-    await sendMessage(sessionKey || userId, `Image received! (${base64.length} bytes)\n\nNote: Image analysis depends on OpenCode's vision capabilities.`)
+    // Download image from LINE (SDK v9 uses BlobClient)
+    const stream = await lineBlobClient.getMessageContent(messageId)
+    const chunks: Buffer[] = []
+    for await (const chunk of stream as AsyncIterable<Buffer>) {
+      chunks.push(Buffer.from(chunk))
+    }
+    const imageBuffer = Buffer.concat(chunks)
+    const base64 = imageBuffer.toString("base64")
+    const sizeKB = Math.round(imageBuffer.length / 1024)
+    console.log(`Image downloaded: ${sizeKB}KB`)
+
+    // Send image description to OpenCode session
+    const key = sessionKey || userId
+    let session = sessions.get(key)
+    if (!session) {
+      const result = await createSession(`LINE: ${userId.slice(-8)}`)
+      session = { sessionId: result.id, userId, isGroup }
+      sessions.set(key, session)
+    }
+    const result = await sendPrompt(session.sessionId, `[User sent an image (${sizeKB}KB). Please acknowledge that you received an image. Note: image content analysis is not yet supported.]`)
+    const responseText = extractResponse(result)
+    await sendMessage(key, responseText)
   } catch (err: any) {
     console.error("Error handling image:", err?.message)
     await sendMessage(sessionKey || userId, `Failed to process image: ${err?.message?.slice(0, 200) ?? "Unknown error"}`)
@@ -383,14 +464,8 @@ async function handleTextMessage(
   try {
     const result = await sendPrompt(session.sessionId, text)
 
-    // Extract text parts from response
-    const responseText =
-      result?.info?.content ||
-      result?.parts
-        ?.filter((p: any) => p.type === "text")
-        .map((p: any) => p.text)
-        .join("\n") ||
-      "Done. (no text output)"
+    // Extract response from all part types
+    const responseText = extractResponse(result)
 
     console.log(`Response length: ${responseText.length} chars`)
     await sendMessage(sessionKey || userId, responseText)
