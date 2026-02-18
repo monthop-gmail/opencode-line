@@ -144,14 +144,7 @@ async function handleJoinEvent(event: any): Promise<void> {
     
 🎊 สวัสดีปีมะเส็ง 2569 🧧
 
-Send any coding prompt to start.
-
-Commands:
-/new - New session
-/abort - Cancel
-/sessions - Show session
-/cny - อวยพรตรุษจีน
-
+📖 พิมพ์ /help ดูคำสั่งทั้งหมด
 💬 คุยส่วนตัว: ${lineOAUrl}`
     
     if (groupId) {
@@ -336,6 +329,29 @@ async function handleTextMessage(
     await lineClient.replyMessage({
       replyToken,
       messages: [{ type: "text", text: aboutMsg }],
+    })
+    return
+  }
+
+  // Help command
+  if (text.toLowerCase() === "/help" || text.toLowerCase() === "/คำสั่ง") {
+    const helpMsg = `📖 คำสั่งทั้งหมด:
+
+🤖 ทั่วไป
+  /about - เกี่ยวกับ bot
+  /help - คำสั่งทั้งหมด
+  /cny - อวยพรตรุษจีน
+
+💻 Session
+  /new - เริ่ม session ใหม่
+  /abort - ยกเลิก prompt
+  /sessions - ดู session ปัจจุบัน
+
+💬 ถามได้เลย!`
+    
+    await lineClient.replyMessage({
+      replyToken,
+      messages: [{ type: "text", text: helpMsg }],
     })
     return
   }
