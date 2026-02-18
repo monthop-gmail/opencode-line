@@ -322,7 +322,12 @@ async function handleTextMessage(
 📝 Context: 200,000 tokens
 💰 ฟรี!
 
-ช่วยเขียน code สร้างโปรเจกต์ และตอบคำถามได้
+📱 ทำงานบน LINE Bot
+
+🧪 มี Workspace ให้ทดสอบเขียน Code ได้
+
+📦 GitHub: https://github.com/monthop-gmail/opencode-playground-workspace-007
+🌐 Deploy: https://opencode-playground-workspace-007.pages.dev
 
 💬 คุยส่วนตัว: ${lineOAUrl}`
     
