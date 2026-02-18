@@ -8,6 +8,7 @@ const port = Number(process.env.PORT ?? 3000)
 const opencodeUrl = (process.env.OPENCODE_URL ?? "http://opencode:4096").replace(/\/$/, "")
 const opencodePassword = process.env.OPENCODE_PASSWORD ?? ""
 const opencodeDir = process.env.OPENCODE_DIR ?? "/workspace"
+const lineOAUrl = process.env.LINE_OA_URL ?? "https://line.me/ti/p/~your-oa"
 
 if (!channelAccessToken || !channelSecret) {
   console.error("Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET")
@@ -138,8 +139,20 @@ async function handleJoinEvent(event: any): Promise<void> {
   
   if (chatId) {
     console.log(`Bot joined group/room: ${chatId}`)
-    // Send welcome message
-    const welcomeMsg = "🧑‍💻 OpenCode AI Bot joined!\n\nSend any coding prompt to start.\n\nCommands:\n/new - New session\n/abort - Cancel\n/sessions - Show session"
+    // Send welcome message with CNY greeting
+    const welcomeMsg = `🧑‍💻 OpenCode AI Bot joined!
+    
+🎊 สวัสดีปีมะเส็ง 2569 🧧
+
+Send any coding prompt to start.
+
+Commands:
+/new - New session
+/abort - Cancel
+/sessions - Show session
+/cny - อวยพรตรุษจีน
+
+💬 คุยส่วนตัว: ${lineOAUrl}`
     
     if (groupId) {
       await lineClient.pushMessage({
@@ -282,6 +295,27 @@ async function handleTextMessage(
     await lineClient.replyMessage({
       replyToken,
       messages: [{ type: "text", text: msg }],
+    })
+    return
+  }
+
+  // CNY Greeting command
+  if (text.toLowerCase() === "/cny") {
+    const cnyMsg = `🧧 สวัสดีปีมะเส็ง 2569 🧧
+
+🎊 ขอให้มีความสุข มีโชค มีลาภ
+💰 ร่ำรวย อายุยืน สุขภาพดี
+🐍 ปีงูให้ทุกอย่างราบรื่น
+
+🌐 Website: ${opencodeUrl.replace('http://', '').replace(':4096', '')}
+
+💬 คุยส่วนตัวกับ AI: ${lineOAUrl}
+
+🎯 Workshop: https://opencode-playground-workspace-007.pages.dev/`
+    
+    await lineClient.replyMessage({
+      replyToken,
+      messages: [{ type: "text", text: cnyMsg }],
     })
     return
   }
