@@ -256,15 +256,17 @@ async function handleLeaveEvent(event: any): Promise<void> {
 }
 
 // --- Get session key based on source type ---
+// Group/room uses groupId/roomId so all members share one session
+// 1:1 chat uses userId
 function getSessionKey(event: any): string | null {
-  if (event.source?.userId) {
-    return event.source.userId
-  }
   if (event.source?.groupId) {
     return event.source.groupId
   }
   if (event.source?.roomId) {
     return event.source.roomId
+  }
+  if (event.source?.userId) {
+    return event.source.userId
   }
   return null
 }
