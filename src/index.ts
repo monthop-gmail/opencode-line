@@ -317,18 +317,46 @@ function chunkText(text: string, limit: number = LINE_MAX_TEXT): string[] {
   return chunks
 }
 
-// --- Send long message via Push API ---
-async function sendMessage(userId: string, text: string): Promise<void> {
+// --- Send message: replyMessage first (free), fallback to pushMessage ---
+async function sendMessage(to: string, text: string, replyToken?: string): Promise<void> {
   const chunks = chunkText(text)
-  for (const chunk of chunks) {
-    await lineClient
-      .pushMessage({
-        to: userId,
-        messages: [{ type: "text", text: chunk }],
-      })
-      .catch((err: any) => {
-        console.error("Failed to send LINE message:", err?.message ?? err)
-      })
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]
+
+    // First chunk: try replyMessage (free, no quota)
+    if (i === 0 && replyToken) {
+      try {
+        await lineClient.replyMessage({
+          replyToken,
+          messages: [{ type: "text", text: chunk }],
+        })
+        continue
+      } catch (err: any) {
+        console.log("replyMessage failed, falling back to push:", err?.message)
+      }
+    }
+
+    // Remaining chunks or reply failed: pushMessage with retry
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await lineClient.pushMessage({
+          to,
+          messages: [{ type: "text", text: chunk }],
+        })
+        break
+      } catch (err: any) {
+        const msg = err?.message ?? String(err)
+        if (msg.includes("429") && attempt < 2) {
+          const delay = (attempt + 1) * 5000
+          console.log(`Rate limited, retrying in ${delay / 1000}s...`)
+          await new Promise((r) => setTimeout(r, delay))
+        } else {
+          console.error("Failed to send LINE message:", msg)
+          break
+        }
+      }
+    }
   }
 }
 
@@ -441,7 +469,8 @@ async function handleTextMessage(
   /abort - ยกเลิก prompt
   /sessions - ดู session ปัจจุบัน
 
-💬 ถามได้เลย!`
+👥 ในกลุ่ม: @mention bot หรือพิมพ์ opencode นำหน้า
+💬 แชทส่วนตัว: ถามได้เลย!`
     
     await lineClient.replyMessage({
       replyToken,
@@ -462,7 +491,7 @@ async function handleTextMessage(
       if (sessionKey) sessions.set(sessionKey, session)
     } catch (err: any) {
       console.error("Failed to create session:", err?.message)
-      await sendMessage(sessionKey || userId, "Failed to create coding session. Please try again.")
+      await sendMessage(sessionKey || userId, "Failed to create coding session. Please try again.", replyToken)
       return
     }
   }
@@ -476,22 +505,47 @@ async function handleTextMessage(
     const responseText = extractResponse(result)
 
     console.log(`Response length: ${responseText.length} chars`)
-    await sendMessage(sessionKey || userId, responseText)
+    await sendMessage(sessionKey || userId, responseText, replyToken)
   } catch (err: any) {
     console.error("OpenCode prompt error:", err?.message)
 
     // If session not found, clear and retry
     if (err?.message?.includes("404") || err?.message?.includes("not found")) {
       if (sessionKey) sessions.delete(sessionKey)
-      await sendMessage(sessionKey || userId, "Session expired. Please send your message again.")
+      await sendMessage(sessionKey || userId, "Session expired. Please send your message again.", replyToken)
     } else {
-      await sendMessage(sessionKey || userId, `Error: ${err?.message?.slice(0, 200) ?? "Unknown error"}`)
+      await sendMessage(sessionKey || userId, `Error: ${err?.message?.slice(0, 200) ?? "Unknown error"}`, replyToken)
     }
   }
 }
 
+// --- Check if bot is mentioned in a group message ---
+function isBotMentioned(event: any): boolean {
+  // Check LINE mention API
+  const mentionees = event.message?.mention?.mentionees
+  if (Array.isArray(mentionees)) {
+    if (mentionees.some((m: any) => m.type === "user" && m.userId === botUserId)) return true
+  }
+  // Check text triggers
+  const text = (event.message?.text ?? "").toLowerCase()
+  if (text.startsWith("@bot") || text.startsWith("opencode") || text.startsWith("@opencode")) return true
+  // Commands always respond
+  if (text.startsWith("/")) return true
+  return false
+}
+
 // --- Start ---
 await waitForOpenCode()
+
+// Get bot userId for mention detection
+let botUserId = ""
+try {
+  const info = await lineClient.getBotInfo()
+  botUserId = info.userId ?? ""
+  console.log("Bot userId:", botUserId)
+} catch (err: any) {
+  console.warn("Could not get bot info:", err?.message)
+}
 
 // --- HTTP Server for LINE Webhook ---
 Bun.serve({
@@ -545,9 +599,15 @@ Bun.serve({
           event.message?.type === "text" &&
           event.source?.userId
         ) {
-          const sessionKey = getSessionKey(event)
           const isGroup = !!event.source?.groupId || !!event.source?.roomId
-          
+
+          // In group: only respond if bot is mentioned or command
+          if (isGroup && !isBotMentioned(event)) {
+            continue
+          }
+
+          const sessionKey = getSessionKey(event)
+
           handleTextMessage(
             event.source.userId,
             event.message.text,
@@ -558,22 +618,23 @@ Bun.serve({
             console.error("Error handling text message:", err)
           })
         }
-        
-        // Handle image messages (user or group)
+
+        // Handle image messages (1:1 only, skip group images)
         if (
           event.type === "message" &&
           event.message?.type === "image" &&
-          event.source?.userId
+          event.source?.userId &&
+          !event.source?.groupId &&
+          !event.source?.roomId
         ) {
           const sessionKey = getSessionKey(event)
-          const isGroup = !!event.source?.groupId || !!event.source?.roomId
-          
+
           handleImageMessage(
             event.source.userId,
             event.message.id,
             event.replyToken,
             sessionKey,
-            isGroup,
+            false,
           ).catch((err) => {
             console.error("Error handling image message:", err)
           })
