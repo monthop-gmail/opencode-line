@@ -74,8 +74,10 @@ async function handleImageMessage(
   userId: string,
   messageId: string,
   replyToken: string,
+  sessionKey: string | null = userId,
+  isGroup: boolean = false,
 ): Promise<void> {
-  console.log(`Image message from ${userId}, messageId: ${messageId}`)
+  console.log(`Image message from ${userId}, group: ${isGroup}, key: ${sessionKey}`)
 
   // Send acknowledgment first
   await lineClient.replyMessage({
@@ -92,10 +94,10 @@ async function handleImageMessage(
     
     // Send to OpenCode - note: OpenCode may not support image input directly
     // For now, we'll just acknowledge receipt
-    await sendMessage(userId, `Image received! (${base64.length} bytes)\n\nNote: Image analysis depends on OpenCode's vision capabilities.`)
+    await sendMessage(sessionKey || userId, `Image received! (${base64.length} bytes)\n\nNote: Image analysis depends on OpenCode's vision capabilities.`)
   } catch (err: any) {
     console.error("Error handling image:", err?.message)
-    await sendMessage(userId, `Failed to process image: ${err?.message?.slice(0, 200) ?? "Unknown error"}`)
+    await sendMessage(sessionKey || userId, `Failed to process image: ${err?.message?.slice(0, 200) ?? "Unknown error"}`)
   }
 }
 
@@ -124,7 +126,55 @@ async function waitForOpenCode(maxRetries = 30, delayMs = 2000): Promise<boolean
 }
 
 // --- Session Management ---
-const sessions = new Map<string, { sessionId: string; userId: string }>()
+// For user chats: key = userId
+// For group chats: key = groupId
+const sessions = new Map<string, { sessionId: string; userId: string; isGroup: boolean }>()
+
+// --- Handle LINE Join events (bot added to group) ---
+async function handleJoinEvent(event: any): Promise<void> {
+  const groupId = event.source?.groupId
+  const roomId = event.source?.roomId
+  const chatId = groupId || roomId
+  
+  if (chatId) {
+    console.log(`Bot joined group/room: ${chatId}`)
+    // Send welcome message
+    const welcomeMsg = "🧑‍💻 OpenCode AI Bot joined!\n\nSend any coding prompt to start.\n\nCommands:\n/new - New session\n/abort - Cancel\n/sessions - Show session"
+    
+    if (groupId) {
+      await lineClient.pushMessage({
+        to: groupId,
+        messages: [{ type: "text", text: welcomeMsg }],
+      }).catch((err: any) => console.error("Welcome error:", err?.message))
+    }
+  }
+}
+
+// --- Handle LINE Leave events (bot removed from group) ---
+async function handleLeaveEvent(event: any): Promise<void> {
+  const groupId = event.source?.groupId
+  const roomId = event.source?.roomId
+  const chatId = groupId || roomId
+  
+  if (chatId) {
+    console.log(`Bot left group/room: ${chatId}`)
+    sessions.delete(chatId)
+  }
+}
+
+// --- Get session key based on source type ---
+function getSessionKey(event: any): string | null {
+  if (event.source?.userId) {
+    return event.source.userId
+  }
+  if (event.source?.groupId) {
+    return event.source.groupId
+  }
+  if (event.source?.roomId) {
+    return event.source.roomId
+  }
+  return null
+}
 
 // --- LINE Signature Validation ---
 function validateSignature(body: string, signature: string): boolean {
@@ -192,12 +242,14 @@ async function handleTextMessage(
   userId: string,
   text: string,
   replyToken: string,
+  sessionKey: string | null = userId,
+  isGroup: boolean = false,
 ): Promise<void> {
-  console.log(`Text message from ${userId}: ${text}`)
+  console.log(`Text message from ${userId}, group: ${isGroup}, key: ${sessionKey}`)
 
   // Special commands
   if (text.toLowerCase() === "/new") {
-    sessions.delete(userId)
+    if (sessionKey) sessions.delete(sessionKey)
     await lineClient.replyMessage({
       replyToken,
       messages: [{ type: "text", text: "Session cleared. Next message starts a new session." }],
@@ -206,7 +258,7 @@ async function handleTextMessage(
   }
 
   if (text.toLowerCase() === "/abort") {
-    const session = sessions.get(userId)
+    const session = sessionKey ? sessions.get(sessionKey) : null
     if (session) {
       await abortSession(session.sessionId)
       await lineClient.replyMessage({
@@ -223,7 +275,7 @@ async function handleTextMessage(
   }
 
   if (text.toLowerCase() === "/sessions") {
-    const session = sessions.get(userId)
+    const session = sessionKey ? sessions.get(sessionKey) : null
     const msg = session
       ? `Active session: ${session.sessionId}`
       : "No active session. Send a message to start one."
@@ -235,18 +287,18 @@ async function handleTextMessage(
   }
 
   // Get or create OpenCode session
-  let session = sessions.get(userId)
+  let session = sessionKey ? sessions.get(sessionKey) : null
 
   if (!session) {
     console.log("Creating new OpenCode session...")
     try {
-      const result = await createSession(`LINE: ${userId.slice(-8)}`)
+      const result = await createSession(`LINE: ${userId.slice(-8)}${isGroup ? " (group)" : ""}`)
       console.log("Created OpenCode session:", result.id)
-      session = { sessionId: result.id, userId }
-      sessions.set(userId, session)
+      session = { sessionId: result.id, userId, isGroup }
+      if (sessionKey) sessions.set(sessionKey, session)
     } catch (err: any) {
       console.error("Failed to create session:", err?.message)
-      await sendMessage(userId, "Failed to create coding session. Please try again.")
+      await sendMessage(sessionKey || userId, "Failed to create coding session. Please try again.")
       return
     }
   }
@@ -266,16 +318,16 @@ async function handleTextMessage(
       "Done. (no text output)"
 
     console.log(`Response length: ${responseText.length} chars`)
-    await sendMessage(userId, responseText)
+    await sendMessage(sessionKey || userId, responseText)
   } catch (err: any) {
     console.error("OpenCode prompt error:", err?.message)
 
     // If session not found, clear and retry
     if (err?.message?.includes("404") || err?.message?.includes("not found")) {
-      sessions.delete(userId)
-      await sendMessage(userId, "Session expired. Please send your message again.")
+      if (sessionKey) sessions.delete(sessionKey)
+      await sendMessage(sessionKey || userId, "Session expired. Please send your message again.")
     } else {
-      await sendMessage(userId, `Error: ${err?.message?.slice(0, 200) ?? "Unknown error"}`)
+      await sendMessage(sessionKey || userId, `Error: ${err?.message?.slice(0, 200) ?? "Unknown error"}`)
     }
   }
 }
@@ -313,31 +365,57 @@ Bun.serve({
 
       // Process events async (return 200 immediately so LINE doesn't retry)
       for (const event of parsed.events) {
-        // Handle text messages
+        // Handle Join events (bot added to group)
+        if (event.type === "join") {
+          handleJoinEvent(event).catch((err) => {
+            console.error("Error handling join event:", err)
+          })
+          continue
+        }
+        
+        // Handle Leave events (bot removed from group)
+        if (event.type === "leave") {
+          handleLeaveEvent(event).catch((err) => {
+            console.error("Error handling leave event:", err)
+          })
+          continue
+        }
+        
+        // Handle text messages (user or group)
         if (
           event.type === "message" &&
           event.message?.type === "text" &&
           event.source?.userId
         ) {
+          const sessionKey = getSessionKey(event)
+          const isGroup = !!event.source?.groupId || !!event.source?.roomId
+          
           handleTextMessage(
             event.source.userId,
             event.message.text,
             event.replyToken,
+            sessionKey,
+            isGroup,
           ).catch((err) => {
             console.error("Error handling text message:", err)
           })
         }
         
-        // Handle image messages
+        // Handle image messages (user or group)
         if (
           event.type === "message" &&
           event.message?.type === "image" &&
           event.source?.userId
         ) {
+          const sessionKey = getSessionKey(event)
+          const isGroup = !!event.source?.groupId || !!event.source?.roomId
+          
           handleImageMessage(
             event.source.userId,
             event.message.id,
             event.replyToken,
+            sessionKey,
+            isGroup,
           ).catch((err) => {
             console.error("Error handling image message:", err)
           })
