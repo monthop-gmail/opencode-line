@@ -170,13 +170,19 @@ async function handleImageMessage(
     const key = sessionKey || userId
     let session = sessions.get(key)
     if (!session) {
+      console.log("[image] Creating new session...")
       const result = await createSession(`LINE: ${userId.slice(-8)}`)
+      console.log("[image] Session created:", result.id)
       session = { sessionId: result.id, userId, isGroup }
       sessions.set(key, session)
     }
+    console.log("[image] Sending prompt to OpenCode...")
     const result = await sendPrompt(session.sessionId, `[User sent an image (${sizeKB}KB). Please acknowledge that you received an image. Note: image content analysis is not yet supported.]`)
+    console.log("[image] Got response, extracting...")
     const responseText = extractResponse(result)
+    console.log(`[image] Response: ${responseText.length} chars`)
     await sendMessage(key, responseText)
+    console.log("[image] Done")
   } catch (err: any) {
     console.error("Error handling image:", err?.message)
     await sendMessage(sessionKey || userId, `Failed to process image: ${err?.message?.slice(0, 200) ?? "Unknown error"}`)
