@@ -10,6 +10,17 @@ const opencodePassword = process.env.OPENCODE_PASSWORD ?? ""
 const opencodeDir = process.env.OPENCODE_DIR ?? "/workspace"
 const lineOAUrl = process.env.LINE_OA_URL ?? "https://line.me/ti/p/~your-oa"
 
+// --- Logging helper ---
+function log(...args: any[]) {
+  const ts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).format(new Date())
+  console.log(`[${ts}]`, ...args)
+}
+
 if (!channelAccessToken || !channelSecret) {
   console.error("Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET")
   process.exit(1)
@@ -182,7 +193,8 @@ async function handleImageMessage(
   sessionKey: string | null = userId,
   isGroup: boolean = false,
 ): Promise<void> {
-  console.log(`Image message from ${userId}, group: ${isGroup}, key: ${sessionKey}`)
+  const userName = userProfiles.get(userId)?.displayName || userId.slice(-8)
+  log(`📷 Image from ${userName}, group: ${isGroup}, key: ${sessionKey?.slice(-8)}`)
 
   try {
     // Download image from LINE (SDK v9 uses BlobClient)
@@ -194,30 +206,30 @@ async function handleImageMessage(
     const imageBuffer = Buffer.concat(chunks)
     const base64 = imageBuffer.toString("base64")
     const sizeKB = Math.round(imageBuffer.length / 1024)
-    console.log(`Image downloaded: ${sizeKB}KB`)
+    log(`📷 Image downloaded: ${sizeKB}KB`)
 
     // Send image description to OpenCode session
     const key = sessionKey || userId
     let session = sessions.get(key)
     if (!session) {
-      console.log("[image] Creating new session...")
+      log("[image] Creating new session...")
       const result = await createSession(`LINE: ${userId.slice(-8)}`)
-      console.log("[image] Session created:", result.id)
+      log("[image] Session created:", result.id)
       session = { sessionId: result.id, userId, isGroup }
       sessions.set(key, session)
     }
-    console.log("[image] Sending prompt to OpenCode...")
+    log("[image] Sending prompt to OpenCode...")
     const mimeType = imageBuffer[0] === 0xFF ? "image/jpeg"
                    : imageBuffer[0] === 0x89 ? "image/png"
                    : "image/jpeg"
     const result = await sendPrompt(session.sessionId, `[User sent an image (${sizeKB}KB, ${mimeType}). Image analysis is not yet supported by the current model. Please acknowledge that you received the image and let the user know.]`, isGroup, userId)
-    console.log("[image] Got response, extracting...")
+    log("[image] Got response, extracting...")
     const responseText = extractResponse(result)
-    console.log(`[image] Response: ${responseText.length} chars`)
+    log(`📷 Response (${responseText.length} chars): ${responseText.slice(0, 100)}${responseText.length > 100 ? "..." : ""}`)
     await sendMessage(key, responseText, replyToken)
-    console.log("[image] Done")
+    log("[image] Done")
   } catch (err: any) {
-    console.error("Error handling image:", err?.message)
+    log("❌ Error handling image:", err?.message)
     await sendMessage(sessionKey || userId, `Failed to process image: ${err?.message?.slice(0, 200) ?? "Unknown error"}`, replyToken)
   }
 }
@@ -463,7 +475,8 @@ async function handleTextMessage(
   isGroup: boolean = false,
   quotedMessageId?: string,
 ): Promise<void> {
-  console.log(`Text message from ${userId}, group: ${isGroup}, key: ${sessionKey}, quoted: ${quotedMessageId || "none"}`)
+  const userName = userProfiles.get(userId)?.displayName || userId.slice(-8)
+  log(`💬 ${userName}: "${text.slice(0, 80)}${text.length > 80 ? "..." : ""}" [group:${isGroup}, key:${sessionKey?.slice(-8)}, quoted:${quotedMessageId || "none"}]`)
 
   // Special commands
   if (text.toLowerCase() === "/new") {
@@ -592,7 +605,7 @@ async function handleTextMessage(
   }
 
   // Send prompt to OpenCode
-  console.log("Sending to OpenCode:", text)
+  log(`➡️ Sending to OpenCode (session: ${session.sessionId.slice(-8)}): ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}`)
   try {
     // Get user profile for context
     await getUserProfile(userId)
@@ -605,14 +618,16 @@ async function handleTextMessage(
     // In group: skip if AI decides message isn't for it
     const trimmedResponse = responseText.trim()
     if (isGroup && (trimmedResponse === "[SKIP]" || trimmedResponse.startsWith("[SKIP]\n") || trimmedResponse.startsWith("[SKIP] "))) {
-      console.log("Skipped (not directed at bot)")
+      log(`⏭️ Skipped: "${text.slice(0, 60)}${text.length > 60 ? "..." : ""}"`)
       return
     }
 
-    console.log(`Response length: ${responseText.length} chars`)
+    const modelId = result?.info?.modelID || "?"
+    const cost = result?.info?.cost ?? 0
+    log(`⬅️ Response (${responseText.length} chars, model:${modelId}, cost:${cost}): ${responseText.slice(0, 100)}${responseText.length > 100 ? "..." : ""}`)
     await sendMessage(sessionKey || userId, responseText, replyToken)
   } catch (err: any) {
-    console.error("OpenCode prompt error:", err?.message)
+    log("❌ OpenCode prompt error:", err?.message)
 
     // If session not found, clear and retry
     if (err?.message?.includes("404") || err?.message?.includes("not found")) {
