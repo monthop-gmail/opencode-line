@@ -63,22 +63,52 @@ async function createSession(title: string): Promise<{ id: string }> {
 
 const PROMPT_TIMEOUT_MS = Number(process.env.PROMPT_TIMEOUT_MS ?? 120_000) // 2 min
 
-async function sendPrompt(sessionId: string, text: string, isGroup: boolean = false): Promise<any> {
+type PromptContent = string | { parts: Array<{ type: string; text?: string; image?: { url: string } }> }
+
+async function sendPrompt(sessionId: string, content: PromptContent, isGroup: boolean = false, userId?: string, quotedMessageId?: string): Promise<any> {
   // Prefix to prevent interactive question tool (blocks the API)
   let prefixed = `[IMPORTANT: Always respond directly with text. Do NOT use the question tool to ask clarifying questions. If unsure, make your best guess and explain your assumptions.]\n\n`
+
+  // Add user context if available
+  if (userId) {
+    const userContext = getUserContext(userId)
+    if (userContext) {
+      prefixed += `${userContext}\n\n`
+    }
+  }
+
+  // Add reply context if this is a reply
+  if (quotedMessageId) {
+    prefixed += `[This is a reply to a previous message (quoted message ID: ${quotedMessageId})]\n\n`
+  }
+
+  // Add time context
+  prefixed += `${getTimeContext()}\n\n`
 
   if (isGroup) {
     prefixed += `[GROUP CHAT: You are in a group chat. If this message is clearly NOT directed at you (just people chatting with each other, unrelated conversations), respond with exactly [SKIP] and nothing else. If the message mentions you, asks a question, or could be directed at you, respond normally.]\n\n`
   }
 
-  prefixed += text
+  // Build parts array
+  let parts: Array<{ type: string; text?: string; image?: { url: string } }>
+  if (typeof content === "string") {
+    parts = [{ type: "text", text: prefixed + content }]
+  } else {
+    // Update text parts with prefix
+    parts = content.parts.map(p => {
+      if (p.type === "text") {
+        return { ...p, text: prefixed + (p.text || "") }
+      }
+      return p
+    })
+  }
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), PROMPT_TIMEOUT_MS)
 
   try {
     const result = await opencodeRequest("POST", `/session/${sessionId}/message`, {
-      parts: [{ type: "text", text: prefixed }],
+      parts,
     }, controller.signal)
     clearTimeout(timeout)
     return result
@@ -183,7 +213,16 @@ async function handleImageMessage(
       sessions.set(key, session)
     }
     console.log("[image] Sending prompt to OpenCode...")
-    const result = await sendPrompt(session.sessionId, `[User sent an image (${sizeKB}KB). Please acknowledge that you received an image. Note: image content analysis is not yet supported.]`)
+    const mimeType = imageBuffer[0] === 0xFF ? "image/jpeg" 
+                   : imageBuffer[0] === 0x89 ? "image/png"
+                   : "image/jpeg"
+    const base64Image = `data:${mimeType};base64,${base64}`
+    const result = await sendPrompt(session.sessionId, {
+      parts: [
+        { type: "text", text: "[User sent an image. Please analyze and describe what's in the image.]" },
+        { type: "image", image: { url: base64Image } },
+      ],
+    }, isGroup, userId)
     console.log("[image] Got response, extracting...")
     const responseText = extractResponse(result)
     console.log(`[image] Response: ${responseText.length} chars`)
@@ -223,6 +262,67 @@ async function waitForOpenCode(maxRetries = 30, delayMs = 2000): Promise<boolean
 // For user chats: key = userId
 // For group chats: key = groupId
 const sessions = new Map<string, { sessionId: string; userId: string; isGroup: boolean }>()
+
+// --- User Memory ---
+interface UserProfile {
+  userId: string
+  displayName: string
+  pictureUrl?: string
+  statusMessage?: string
+  firstSeen: number
+  lastSeen: number
+  messageCount: number
+}
+const userProfiles = new Map<string, UserProfile>()
+
+async function getUserProfile(userId: string): Promise<UserProfile | null> {
+  // Check cache first
+  const cached = userProfiles.get(userId)
+  if (cached && Date.now() - cached.lastSeen < 3600000) { // 1 hour cache
+    cached.lastSeen = Date.now()
+    cached.messageCount++
+    return cached
+  }
+
+  try {
+    const profile = await lineClient.getProfile(userId)
+    const userProfile: UserProfile = {
+      userId,
+      displayName: profile.displayName || "Unknown",
+      pictureUrl: profile.pictureUrl,
+      statusMessage: profile.statusMessage,
+      firstSeen: cached?.firstSeen || Date.now(),
+      lastSeen: Date.now(),
+      messageCount: (cached?.messageCount || 0) + 1,
+    }
+    userProfiles.set(userId, userProfile)
+    return userProfile
+  } catch (err) {
+    console.warn("Failed to get user profile:", err)
+    return cached || null
+  }
+}
+
+function getUserContext(userId: string): string {
+  const profile = userProfiles.get(userId)
+  if (!profile) return ""
+  return `[User Info: ${profile.displayName} (messages: ${profile.messageCount})]`
+}
+
+function getTimeContext(): string {
+  const now = new Date()
+  const beYear = now.getFullYear() + 543
+  const bangkokTime = new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(now)
+  return `[Current Time (Bangkok): ${bangkokTime}, พ.ศ. ${beYear}]`
+}
 
 // --- Handle LINE Join events (bot added to group) ---
 async function handleJoinEvent(event: any): Promise<void> {
@@ -373,8 +473,9 @@ async function handleTextMessage(
   replyToken: string,
   sessionKey: string | null = userId,
   isGroup: boolean = false,
+  quotedMessageId?: string,
 ): Promise<void> {
-  console.log(`Text message from ${userId}, group: ${isGroup}, key: ${sessionKey}`)
+  console.log(`Text message from ${userId}, group: ${isGroup}, key: ${sessionKey}, quoted: ${quotedMessageId || "none"}`)
 
   // Special commands
   if (text.toLowerCase() === "/new") {
@@ -505,13 +606,17 @@ async function handleTextMessage(
   // Send prompt to OpenCode
   console.log("Sending to OpenCode:", text)
   try {
-    const result = await sendPrompt(session.sessionId, text, isGroup)
+    // Get user profile for context
+    await getUserProfile(userId)
+    
+    const result = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId)
 
     // Extract response from all part types
     const responseText = extractResponse(result)
 
     // In group: skip if AI decides message isn't for it
-    if (isGroup && responseText.trim() === "[SKIP]") {
+    const trimmedResponse = responseText.trim()
+    if (isGroup && (trimmedResponse === "[SKIP]" || trimmedResponse.startsWith("[SKIP]\n") || trimmedResponse.startsWith("[SKIP] "))) {
       console.log("Skipped (not directed at bot)")
       return
     }
@@ -613,6 +718,7 @@ Bun.serve({
         ) {
           const isGroup = !!event.source?.groupId || !!event.source?.roomId
           const sessionKey = getSessionKey(event)
+          const quotedMessageId = event.message?.quotedMessageId
 
           handleTextMessage(
             event.source.userId,
@@ -620,19 +726,19 @@ Bun.serve({
             event.replyToken,
             sessionKey,
             isGroup,
+            quotedMessageId,
           ).catch((err) => {
             console.error("Error handling text message:", err)
           })
         }
 
-        // Handle image messages (1:1 only, skip group images)
+        // Handle image messages (including group)
         if (
           event.type === "message" &&
           event.message?.type === "image" &&
-          event.source?.userId &&
-          !event.source?.groupId &&
-          !event.source?.roomId
+          event.source?.userId
         ) {
+          const isGroup = !!event.source?.groupId || !!event.source?.roomId
           const sessionKey = getSessionKey(event)
 
           handleImageMessage(
@@ -640,7 +746,7 @@ Bun.serve({
             event.message.id,
             event.replyToken,
             sessionKey,
-            false,
+            isGroup,
           ).catch((err) => {
             console.error("Error handling image message:", err)
           })
