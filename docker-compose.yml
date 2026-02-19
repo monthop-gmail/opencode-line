@@ -1,10 +1,13 @@
 services:
   # OpenCode server - AI coding agent
   opencode:
-    image: ghcr.io/anomalyco/opencode:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.opencode
     container_name: opencode-server
     environment:
       - OPENCODE_SERVER_PASSWORD=${OPENCODE_PASSWORD:-changeme}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     volumes:
       - ${PROJECT_DIR:-./workspace}:/workspace
       - opencode-data:/root/.local/share/opencode
