@@ -42,3 +42,4 @@ Set the webhook URL in LINE Developer Console:
 ### How it works
 
 Each LINE user gets their own OpenCode session. Messages are forwarded to the AI coding agent, and responses are sent back through LINE. Tool updates (file edits, bash commands) are sent as real-time notifications.
+test
