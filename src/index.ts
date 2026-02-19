@@ -299,17 +299,17 @@ function getUserContext(userId: string): string {
 
 function getTimeContext(): string {
   const now = new Date()
-  const beYear = now.getFullYear() + 543
-  const bangkokTime = new Intl.DateTimeFormat("th-TH", {
+  const bangkokTime = new Intl.DateTimeFormat("sv-SE", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "long",
+    month: "2-digit",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   }).format(now)
-  return `[Current Time (Bangkok): ${bangkokTime}, พ.ศ. ${beYear}]`
+  return `[Time: ${bangkokTime}+07:00]`
 }
 
 // --- Handle LINE Join events (bot added to group) ---

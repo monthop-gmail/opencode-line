@@ -58,7 +58,7 @@ LINE app → Cloudflare Tunnel → line-bot (Bun, port 3000) → opencode (port 
 
 **User context enrichment:** Every prompt includes:
 - User Memory — LINE profile (displayName) + message count, cached 1 hour
-- Time Context — Bangkok timezone + พ.ศ. (Buddhist Era year)
+- Time Context — Bangkok timezone in ISO 8601 format (e.g., `[Time: 2026-02-19T23:57+07:00]`)
 - Reply Context — `quotedMessageId` when user replies to a message
 
 ## Environment Variables
