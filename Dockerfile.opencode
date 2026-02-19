@@ -2,4 +2,5 @@ FROM ghcr.io/anomalyco/opencode:latest
 
 RUN apk add --no-cache git curl jq github-cli && \
     git config --global user.name "opencode-bot" && \
-    git config --global user.email "opencode-bot@users.noreply.github.com"
+    git config --global user.email "opencode-bot@users.noreply.github.com" && \
+    git config --global credential.helper '!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f'
