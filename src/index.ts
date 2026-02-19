@@ -184,12 +184,6 @@ async function handleImageMessage(
 ): Promise<void> {
   console.log(`Image message from ${userId}, group: ${isGroup}, key: ${sessionKey}`)
 
-  // Send acknowledgment first
-  await lineClient.replyMessage({
-    replyToken,
-    messages: [{ type: "text", text: "Received your image! Analyzing..." }],
-  }).catch(() => {})
-
   try {
     // Download image from LINE (SDK v9 uses BlobClient)
     const stream = await lineBlobClient.getMessageContent(messageId)
@@ -213,24 +207,18 @@ async function handleImageMessage(
       sessions.set(key, session)
     }
     console.log("[image] Sending prompt to OpenCode...")
-    const mimeType = imageBuffer[0] === 0xFF ? "image/jpeg" 
+    const mimeType = imageBuffer[0] === 0xFF ? "image/jpeg"
                    : imageBuffer[0] === 0x89 ? "image/png"
                    : "image/jpeg"
-    const base64Image = `data:${mimeType};base64,${base64}`
-    const result = await sendPrompt(session.sessionId, {
-      parts: [
-        { type: "text", text: "[User sent an image. Please analyze and describe what's in the image.]" },
-        { type: "image", image: { url: base64Image } },
-      ],
-    }, isGroup, userId)
+    const result = await sendPrompt(session.sessionId, `[User sent an image (${sizeKB}KB, ${mimeType}). Image analysis is not yet supported by the current model. Please acknowledge that you received the image and let the user know.]`, isGroup, userId)
     console.log("[image] Got response, extracting...")
     const responseText = extractResponse(result)
     console.log(`[image] Response: ${responseText.length} chars`)
-    await sendMessage(key, responseText)
+    await sendMessage(key, responseText, replyToken)
     console.log("[image] Done")
   } catch (err: any) {
     console.error("Error handling image:", err?.message)
-    await sendMessage(sessionKey || userId, `Failed to process image: ${err?.message?.slice(0, 200) ?? "Unknown error"}`)
+    await sendMessage(sessionKey || userId, `Failed to process image: ${err?.message?.slice(0, 200) ?? "Unknown error"}`, replyToken)
   }
 }
 
