@@ -155,7 +155,7 @@ async function abortSession(sessionId: string): Promise<void> {
 
 // --- Extract response text from all part types ---
 function extractResponse(result: any): string {
-  if (!result?.parts) return "Done. (no text output)"
+  if (!result?.parts) return "เสร็จแล้วครับ (ไม่มีข้อความตอบกลับ)"
 
   const parts: string[] = []
 
@@ -182,7 +182,7 @@ function extractResponse(result: any): string {
     }
   }
 
-  return parts.join("\n\n") || "Done. (no text output)"
+  return parts.join("\n\n") || "เสร็จแล้วครับ (ไม่มีข้อความตอบกลับ)"
 }
 
 // --- Handle incoming LINE Image message ---
@@ -230,7 +230,7 @@ async function handleImageMessage(
     log("[image] Done")
   } catch (err: any) {
     log("❌ Error handling image:", err?.message)
-    await sendMessage(sessionKey || userId, `Failed to process image: ${err?.message?.slice(0, 200) ?? "Unknown error"}`, replyToken)
+    await sendMessage(sessionKey || userId, `ประมวลผลรูปภาพไม่สำเร็จครับ: ${err?.message?.slice(0, 200) ?? "ไม่ทราบสาเหตุ"}`, replyToken)
   }
 }
 
@@ -333,12 +333,11 @@ async function handleJoinEvent(event: any): Promise<void> {
   if (chatId) {
     console.log(`Bot joined group/room: ${chatId}`)
     // Send welcome message with CNY greeting
-    const welcomeMsg = `🧑‍💻 OpenCode AI Bot joined!
-    
-🎊 สวัสดีปีมะเส็ง 2569 🧧
+    const welcomeMsg = `🧑‍💻 สวัสดีครับ! ผม OpenCode AI Bot
 
+💬 พิมพ์อะไรก็ได้ ผมช่วยเขียน code ให้ครับ
 📖 พิมพ์ /help ดูคำสั่งทั้งหมด
-💬 คุยส่วนตัว: ${lineOAUrl}`
+🔒 คุยส่วนตัว: ${lineOAUrl}`
     
     if (groupId) {
       await lineClient.pushMessage({
@@ -483,7 +482,7 @@ async function handleTextMessage(
     if (sessionKey) sessions.delete(sessionKey)
     await lineClient.replyMessage({
       replyToken,
-      messages: [{ type: "text", text: "Session cleared. Next message starts a new session." }],
+      messages: [{ type: "text", text: "เริ่ม session ใหม่แล้วครับ ส่งข้อความมาได้เลย!" }],
     })
     return
   }
@@ -494,12 +493,12 @@ async function handleTextMessage(
       await abortSession(session.sessionId)
       await lineClient.replyMessage({
         replyToken,
-        messages: [{ type: "text", text: "Prompt cancelled." }],
+        messages: [{ type: "text", text: "ยกเลิกคำสั่งแล้วครับ" }],
       })
     } else {
       await lineClient.replyMessage({
         replyToken,
-        messages: [{ type: "text", text: "No active session." }],
+        messages: [{ type: "text", text: "ไม่มี session ที่ใช้งานอยู่ครับ" }],
       })
     }
     return
@@ -508,8 +507,8 @@ async function handleTextMessage(
   if (text.toLowerCase() === "/sessions") {
     const session = sessionKey ? sessions.get(sessionKey) : null
     const msg = session
-      ? `Active session: ${session.sessionId}`
-      : "No active session. Send a message to start one."
+      ? `กำลังใช้งาน session อยู่ครับ (ID: ...${session.sessionId.slice(-8)})\nพิมพ์ /new เพื่อเริ่มใหม่`
+      : "ยังไม่มี session ครับ ส่งข้อความมาเพื่อเริ่มใช้งาน!"
     await lineClient.replyMessage({
       replyToken,
       messages: [{ type: "text", text: msg }],
@@ -525,11 +524,9 @@ async function handleTextMessage(
 💰 ร่ำรวย อายุยืน สุขภาพดี
 🐍 ปีงูให้ทุกอย่างราบรื่น
 
-🌐 Website: ${opencodeUrl.replace('http://', '').replace(':4096', '')}
-
 💬 คุยส่วนตัวกับ AI: ${lineOAUrl}
 
-🎯 Workshop: https://opencode-playground-workspace-007.pages.dev/`
+📦 GitHub: https://github.com/monthop-gmail/opencode-line`
     
     await lineClient.replyMessage({
       replyToken,
@@ -540,25 +537,47 @@ async function handleTextMessage(
 
   // About command
   if (text.toLowerCase() === "/about" || text.toLowerCase() === "/who") {
-    const aboutMsg = `🧑‍💻 สวัสดีครับ!
+    const aboutMsg = `🧑‍💻 สวัสดีครับ! ผมคือ OpenCode AI Bot
 
-ผมคือ OpenCode AI Bot
-🤖 Model: Big-Pickle (opencode/big-pickle)
-📝 Context: 200,000 tokens
-💰 ฟรี!
+🤖 Model: Big-Pickle (200K context, ฟรี!)
+📱 ทำงานผ่าน LINE — ถามอะไรก็ได้ ช่วยเขียน code ให้
 
-📱 ทำงานบน LINE Bot
+🧪 Playground — ทดลองเขียน code ผ่าน LINE
+   push แล้ว auto deploy ไป Cloudflare Pages
+   พิมพ์ /playground ดูรายละเอียด
 
-🧪 มี Workspace ให้ทดสอบเขียน Code ได้
-
-📦 GitHub: https://github.com/monthop-gmail/opencode-playground-workspace-007
-🌐 Deploy: https://opencode-playground-workspace-007.pages.dev
-
-💬 คุยส่วนตัว: ${lineOAUrl}`
+📦 GitHub: https://github.com/monthop-gmail/opencode-line
+💬 คุยส่วนตัว: ${lineOAUrl}
+📖 พิมพ์ /help ดูคำสั่งทั้งหมด`
     
     await lineClient.replyMessage({
       replyToken,
       messages: [{ type: "text", text: aboutMsg }],
+    })
+    return
+  }
+
+  // Playground command
+  if (text.toLowerCase() === "/playground") {
+    const playgroundMsg = `🧪 Playground — ทดลองเขียน code ผ่าน LINE Bot
+
+📋 วิธีเริ่มต้น:
+1. สร้าง LINE Group + เชิญ bot เข้ากลุ่ม
+2. ส่งข้อความให้ bot สร้าง repo ใหม่จาก template
+3. เขียน code ผ่าน LINE → bot push → auto deploy!
+
+📦 Template:
+https://github.com/monthop-gmail/opencode-line-playground-template-000
+
+🔄 CI/CD:
+  PR ต้อง link issue (เช่น closes #123)
+  Push to main → auto deploy ไป Cloudflare Pages
+
+📖 ดู prompt สำหรับสร้าง repo ใหม่ได้ที่ README ของ template`
+
+    await lineClient.replyMessage({
+      replyToken,
+      messages: [{ type: "text", text: playgroundMsg }],
     })
     return
   }
@@ -568,17 +587,21 @@ async function handleTextMessage(
     const helpMsg = `📖 คำสั่งทั้งหมด:
 
 🤖 ทั่วไป
-  /about - เกี่ยวกับ bot
-  /help - คำสั่งทั้งหมด
-  /cny - อวยพรตรุษจีน
+  /about — แนะนำตัว bot
+  /help — คำสั่งทั้งหมด
+  /cny — อวยพรตรุษจีน
 
 💻 Session
-  /new - เริ่ม session ใหม่
-  /abort - ยกเลิก prompt
-  /sessions - ดู session ปัจจุบัน
+  /new — เริ่มบทสนทนาใหม่
+  /abort — ยกเลิกคำสั่งที่กำลังทำ
+  /sessions — ดูสถานะ session
 
-👥 ในกลุ่ม: @mention bot หรือพิมพ์ opencode นำหน้า
-💬 แชทส่วนตัว: ถามได้เลย!`
+🧪 Playground
+  /playground — เริ่มต้นสร้าง playground
+
+💬 วิธีใช้งาน:
+  แชทส่วนตัว — พิมพ์ได้เลย!
+  ในกลุ่ม — พิมพ์ได้เลย bot จะตอบเฉพาะข้อความที่เกี่ยวข้อง`
     
     await lineClient.replyMessage({
       replyToken,
@@ -599,7 +622,7 @@ async function handleTextMessage(
       if (sessionKey) sessions.set(sessionKey, session)
     } catch (err: any) {
       console.error("Failed to create session:", err?.message)
-      await sendMessage(sessionKey || userId, "Failed to create coding session. Please try again.", replyToken)
+      await sendMessage(sessionKey || userId, "สร้าง session ไม่สำเร็จครับ ลองส่งข้อความใหม่อีกครั้ง", replyToken)
       return
     }
   }
@@ -632,9 +655,9 @@ async function handleTextMessage(
     // If session not found, clear and retry
     if (err?.message?.includes("404") || err?.message?.includes("not found")) {
       if (sessionKey) sessions.delete(sessionKey)
-      await sendMessage(sessionKey || userId, "Session expired. Please send your message again.", replyToken)
+      await sendMessage(sessionKey || userId, "Session หมดอายุแล้วครับ ส่งข้อความมาใหม่ได้เลย", replyToken)
     } else {
-      await sendMessage(sessionKey || userId, `Error: ${err?.message?.slice(0, 200) ?? "Unknown error"}`, replyToken)
+      await sendMessage(sessionKey || userId, `เกิดข้อผิดพลาดครับ: ${err?.message?.slice(0, 200) ?? "ไม่ทราบสาเหตุ"}`, replyToken)
     }
   }
 }
