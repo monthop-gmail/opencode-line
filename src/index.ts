@@ -129,7 +129,12 @@ async function sendPrompt(sessionId: string, content: PromptContent, isGroup: bo
     if (err?.name === "AbortError" || err?.message?.includes("abort")) {
       console.log("Prompt timed out, fetching partial response...")
       await abortSession(sessionId)
-      return fetchLastAssistantMessage(sessionId)
+      const partial = await fetchLastAssistantMessage(sessionId)
+      if (partial) {
+        // Mark as truncated so caller can inform user
+        partial._truncated = true
+      }
+      return partial
     }
     throw err
   }
@@ -194,44 +199,15 @@ async function handleImageMessage(
   isGroup: boolean = false,
 ): Promise<void> {
   const userName = userProfiles.get(userId)?.displayName || userId.slice(-8)
-  log(`📷 Image from ${userName}, group: ${isGroup}, key: ${sessionKey?.slice(-8)}`)
+  log(`📷 Image from ${userName}, group: ${isGroup}, key: ${sessionKey?.slice(-8)} (no vision)`)
 
-  try {
-    // Download image from LINE (SDK v9 uses BlobClient)
-    const stream = await lineBlobClient.getMessageContent(messageId)
-    const chunks: Buffer[] = []
-    for await (const chunk of stream as AsyncIterable<Buffer>) {
-      chunks.push(Buffer.from(chunk))
-    }
-    const imageBuffer = Buffer.concat(chunks)
-    const base64 = imageBuffer.toString("base64")
-    const sizeKB = Math.round(imageBuffer.length / 1024)
-    log(`📷 Image downloaded: ${sizeKB}KB`)
+  // Model has no vision — silent in group, short reply in 1:1
+  if (isGroup) return
 
-    // Send image description to OpenCode session
-    const key = sessionKey || userId
-    let session = sessions.get(key)
-    if (!session) {
-      log("[image] Creating new session...")
-      const result = await createSession(`LINE: ${userId.slice(-8)}`)
-      log("[image] Session created:", result.id)
-      session = { sessionId: result.id, userId, isGroup }
-      sessions.set(key, session)
-    }
-    log("[image] Sending prompt to OpenCode...")
-    const mimeType = imageBuffer[0] === 0xFF ? "image/jpeg"
-                   : imageBuffer[0] === 0x89 ? "image/png"
-                   : "image/jpeg"
-    const result = await sendPrompt(session.sessionId, `[User sent an image (${sizeKB}KB, ${mimeType}). Image analysis is not yet supported by the current model. Please acknowledge that you received the image and let the user know.]`, isGroup, userId)
-    log("[image] Got response, extracting...")
-    const responseText = extractResponse(result)
-    log(`📷 Response (${responseText.length} chars): ${responseText.slice(0, 100)}${responseText.length > 100 ? "..." : ""}`)
-    await sendMessage(key, responseText, replyToken)
-    log("[image] Done")
-  } catch (err: any) {
-    log("❌ Error handling image:", err?.message)
-    await sendMessage(sessionKey || userId, `ประมวลผลรูปภาพไม่สำเร็จครับ: ${err?.message?.slice(0, 200) ?? "ไม่ทราบสาเหตุ"}`, replyToken)
-  }
+  await lineClient.replyMessage({
+    replyToken,
+    messages: [{ type: "text", text: "ยังดูรูปไม่ได้ครับ ส่งเป็นข้อความแทนนะ" }],
+  }).catch(() => {})
 }
 
 // --- Wait for OpenCode server ---
@@ -661,6 +637,12 @@ https://jibjib-meditation.pages.dev
 
   // Send prompt to OpenCode
   log(`➡️ Sending to OpenCode (session: ${session.sessionId.slice(-8)}): ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}`)
+
+  // Show loading animation (free, doesn't consume replyToken)
+  if (!isGroup) {
+    lineClient.showLoadingAnimation({ chatId: userId, loadingSeconds: 60 }).catch(() => {})
+  }
+
   try {
     // Get user profile for context
     await getUserProfile(userId)
@@ -668,7 +650,12 @@ https://jibjib-meditation.pages.dev
     const result = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId)
 
     // Extract response from all part types
-    const responseText = extractResponse(result)
+    let responseText = extractResponse(result)
+
+    // Append notice if response was truncated by timeout
+    if (result?._truncated) {
+      responseText += "\n\n⏱️ (คำตอบถูกตัดเนื่องจากใช้เวลานานเกินไป ลองถามใหม่ หรือพิมพ์ /new เริ่ม session ใหม่)"
+    }
 
     // In group: skip if AI decides message isn't for it
     const trimmedResponse = responseText.trim()
@@ -684,10 +671,23 @@ https://jibjib-meditation.pages.dev
   } catch (err: any) {
     log("❌ OpenCode prompt error:", err?.message)
 
-    // If session not found, clear and retry
+    // If session not found, auto-retry with new session
     if (err?.message?.includes("404") || err?.message?.includes("not found")) {
       if (sessionKey) sessions.delete(sessionKey)
-      await sendMessage(sessionKey || userId, "Session หมดอายุแล้วครับ ส่งข้อความมาใหม่ได้เลย", replyToken)
+      log("🔄 Session expired, auto-retrying with new session...")
+      try {
+        const newResult = await createSession(`LINE: ${userId.slice(-8)}${isGroup ? " (group)" : ""}`)
+        session = { sessionId: newResult.id, userId, isGroup }
+        if (sessionKey) sessions.set(sessionKey, session)
+        const retryResult = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId)
+        const retryText = extractResponse(retryResult)
+        await sendMessage(sessionKey || userId, retryText, replyToken)
+        return
+      } catch (retryErr: any) {
+        log("❌ Auto-retry failed:", retryErr?.message)
+        await sendMessage(sessionKey || userId, "สร้าง session ใหม่ไม่สำเร็จครับ ลองส่งข้อความมาใหม่อีกครั้ง", replyToken)
+        return
+      }
     } else {
       await sendMessage(sessionKey || userId, `เกิดข้อผิดพลาดครับ: ${err?.message?.slice(0, 200) ?? "ไม่ทราบสาเหตุ"}`, replyToken)
     }
