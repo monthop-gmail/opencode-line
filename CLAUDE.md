@@ -106,7 +106,7 @@ Referenced in `/meditation` command and web `/about` page. Meditation DApp for e
 
 ## Gotchas
 
-- OpenCode API does not support `image` part type (returns 400). Big-pickle has no vision. Images are acknowledged as text only.
+- Big-pickle has no vision. Images: silent in group, short reply in 1:1 ("ยังดูรูปไม่ได้ครับ"). `workspace/AGENTS.md` also instructs AI not to pretend it can see images.
 - `model.json` (state) and `auth.json` (data) are in **different directories** — they need separate Docker volume mounts.
 - OpenCode image entrypoint is `opencode`, so command should be `["serve", ...]` not `["opencode", "serve", ...]`.
 - Cloudflare tunnel URL changes on every container restart — must update LINE webhook URL in LINE Developer Console.
