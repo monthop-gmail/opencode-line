@@ -36,7 +36,7 @@ docker exec opencode-server cat /root/.local/share/opencode/auth.json    # Check
 LINE app → Cloudflare Tunnel → line-bot (Bun, port 3000) → opencode (port 4096) → /workspace
 ```
 
-- **`src/index.ts`** — Single-file application (~760 lines). All bot logic: webhook handler, session management, OpenCode REST client, LINE message sending, image handling, group chat filtering, user memory, time context.
+- **`src/index.ts`** — Single-file application (~910 lines). All bot logic: webhook handler, session management, OpenCode REST client, LINE message sending, image handling, group chat filtering, user memory, time context, LINE commands (/about, /help, /playground, /meditation, /cny), web /about page (HTML).
 - **`Dockerfile`** — LINE bot container (`oven/bun:1`, Debian)
 - **`Dockerfile.opencode`** — OpenCode server extending `ghcr.io/anomalyco/opencode:latest` (Alpine) with dev tools (git, curl, jq, gh)
 - **`docker-compose.yml`** — Orchestrates 3 services with 2 named volumes (`opencode-data` for auth, `opencode-state` for model selection)
@@ -68,7 +68,7 @@ Required in `.env` (not committed):
 - `CLOUDFLARE_TUNNEL_TOKEN` — Tunnel authentication
 - `OPENCODE_PASSWORD` — OpenCode server Basic auth password (default: `changeme`)
 - `GITHUB_TOKEN` — GitHub PAT for `gh` CLI inside OpenCode container
-- `LINE_OA_URL` — LINE Official Account URL (used in /about, /cny commands)
+- `LINE_OA_URL` — LINE Official Account URL (used in /about, /cny, /meditation, /playground, welcome message, and web /about page)
 - `PROMPT_TIMEOUT_MS` — Prompt timeout in ms (default: `120000`)
 
 ## Docker Volumes
@@ -78,6 +78,31 @@ Two separate volumes are critical — they persist different data across contain
 - **`opencode-state`** → `/root/.local/state/opencode` — model.json (default model = big-pickle)
 
 If `opencode-state` is missing, OpenCode defaults to gemini-3-pro (paid, requires payment method).
+
+## LINE Bot Commands
+
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `/new` | — | เริ่ม session ใหม่ |
+| `/abort` | — | ยกเลิก prompt ที่กำลังทำ |
+| `/sessions` | — | ดูสถานะ session |
+| `/about` | `/who` | แนะนำตัว bot |
+| `/help` | `/คำสั่ง` | คำสั่งทั้งหมด |
+| `/playground` | `/pg` | Playground info |
+| `/meditation` | `/jibjib`, `/meditate`, `/สมาธิ` | JIBJIB Meditation DApp |
+| `/cny` | — | อวยพรตรุษจีน |
+
+## Web Routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Health check (plain text) |
+| `GET` | `/about` | About page (HTML, dark theme, meditation card, tech stack) |
+| `POST` | `/webhook` | LINE webhook endpoint |
+
+## JIBJIB Meditation DApp
+
+Referenced in `/meditation` command and web `/about` page. Meditation DApp for earning token rewards on JB Chain and KUB Testnet. Source: [jibjib-meditation-dapp](https://github.com/monthop-gmail/jibjib-meditation-dapp), deployed at https://jibjib-meditation.pages.dev.
 
 ## Gotchas
 
