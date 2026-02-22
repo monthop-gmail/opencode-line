@@ -38,6 +38,16 @@ Set the webhook URL in LINE Developer Console:
 - `/new` - Start a new coding session
 - `/abort` - Cancel the current prompt
 - `/sessions` - Show active session info
+- `/about` (`/who`) - About the bot
+- `/help` (`/คำสั่ง`) - All commands
+- `/playground` (`/pg`) - Playground info
+- `/meditation` (`/jibjib`, `/meditate`, `/สมาธิ`) - JIBJIB Meditation DApp
+
+### Web Routes
+
+- `GET /` - Health check
+- `GET /about` - About page (HTML)
+- `POST /webhook` - LINE webhook
 
 ### How it works
 
