@@ -131,10 +131,10 @@ async function sendPrompt(sessionId: string, content: PromptContent, isGroup: bo
       await abortSession(sessionId)
       const partial = await fetchLastAssistantMessage(sessionId)
       if (partial) {
-        // Mark as truncated so caller can inform user
         partial._truncated = true
+        return partial
       }
-      return partial
+      return { _timedOut: true }
     }
     throw err
   }
@@ -652,9 +652,15 @@ https://jibjib-meditation.pages.dev
     // Extract response from all part types
     let responseText = extractResponse(result)
 
-    // Append notice if response was truncated by timeout
+    // Timeout: no response at all → suggest /new
+    if (result?._timedOut) {
+      await sendMessage(sessionKey || userId, "⏱️ AI ใช้เวลานานเกินไป ลองพิมพ์ /new แล้วถามใหม่", replyToken)
+      return
+    }
+
+    // Timeout: partial response → show it + suggest "ต่อ"
     if (result?._truncated) {
-      responseText += "\n\n⏱️ (คำตอบถูกตัดเนื่องจากใช้เวลานานเกินไป ลองถามใหม่ หรือพิมพ์ /new เริ่ม session ใหม่)"
+      responseText += '\n\n⏱️ คำตอบยังไม่ครบ รอสัก 1 นาที แล้วพิมพ์ "ต่อ" เพื่อขอส่วนที่เหลือ'
     }
 
     // In group: skip if AI decides message isn't for it
