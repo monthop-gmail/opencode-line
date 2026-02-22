@@ -546,6 +546,12 @@ async function handleTextMessage(
    push แล้ว auto deploy ไป Cloudflare Pages
    พิมพ์ /playground ดูรายละเอียด
 
+🧘 JIBJIB Meditation — ทำสมาธิ 5 นาที รับ Reward บน Blockchain
+   รองรับ JB Chain + KUB Testnet
+   เปิดแอป: https://jibjib-meditation.pages.dev
+   GitHub: https://github.com/monthop-gmail/jibjib-meditation-dapp
+   ร่วม dev ได้เลย! (Solidity / React / UX)
+
 📦 GitHub: https://github.com/monthop-gmail/opencode-line
 💬 คุยส่วนตัว: ${lineOAUrl}
 📖 พิมพ์ /help ดูคำสั่งทั้งหมด`
@@ -699,6 +705,97 @@ Bun.serve({
     // Health check
     if (req.method === "GET" && url.pathname === "/") {
       return new Response("OpenCode LINE Bot is running")
+    }
+
+    // About page
+    if (req.method === "GET" && url.pathname === "/about") {
+      const html = `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenCode LINE Bot — About</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a1a;color:#e0e0e0;min-height:100vh;padding:2rem 1rem}
+  .container{max-width:640px;margin:0 auto}
+  h1{font-size:1.8rem;margin-bottom:.5rem;background:linear-gradient(135deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  h2{font-size:1.3rem;margin-top:2rem;margin-bottom:.75rem;color:#a29bfe}
+  p,li{line-height:1.7;color:#b2bec3;margin-bottom:.5rem}
+  a{color:#74b9ff;text-decoration:none}
+  a:hover{text-decoration:underline}
+  .card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+  .card h3{color:#55efc4;font-size:1.1rem;margin-bottom:.5rem}
+  .badge{display:inline-block;background:rgba(108,92,231,.2);color:#a29bfe;padding:.2rem .6rem;border-radius:6px;font-size:.8rem;margin:.15rem .2rem}
+  .badge-green{background:rgba(85,239,196,.15);color:#55efc4}
+  ul{padding-left:1.2rem}
+  .links{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem}
+  .links a{background:rgba(108,92,231,.15);border:1px solid rgba(108,92,231,.3);padding:.5rem 1rem;border-radius:8px;font-size:.9rem}
+  .links a:hover{background:rgba(108,92,231,.3);text-decoration:none}
+  footer{margin-top:3rem;text-align:center;color:#636e72;font-size:.8rem}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>OpenCode LINE Bot</h1>
+  <p>AI coding agent ที่ใช้ผ่าน LINE — ถามคำถาม เขียนโค้ด ให้ AI ช่วยได้เลย</p>
+
+  <h2>JIBJIB Meditation DApp</h2>
+  <div class="card">
+    <h3>ทำสมาธิ 5 นาที รับ Reward บน Blockchain</h3>
+    <p>DApp สำหรับฝึกสมาธิ ทำครบ 5 นาทีรับ token reward อัตโนมัติ รองรับหลาย chain</p>
+    <ul>
+      <li><span class="badge badge-green">JB Chain</span> JIBJIB 100K / JIBJIB C 50K / JBC 0.01 ต่อรอบ</li>
+      <li><span class="badge badge-green">KUB Testnet</span> tKUB 0.001 ต่อรอบ</li>
+      <li>ทำได้ 3 ครั้ง/วัน เว้น 3 ชม. ระหว่างรอบ — Bonus 2x หลัง 22:00 UTC</li>
+    </ul>
+    <div class="links">
+      <a href="https://jibjib-meditation.pages.dev" target="_blank">เปิดแอป</a>
+      <a href="https://github.com/monthop-gmail/jibjib-meditation-dapp" target="_blank">GitHub Repo</a>
+    </div>
+  </div>
+
+  <h2>Tech Stack</h2>
+  <div class="card">
+    <p>
+      <span class="badge">Solidity 0.8.19</span>
+      <span class="badge">React</span>
+      <span class="badge">Wagmi V2</span>
+      <span class="badge">Viem</span>
+      <span class="badge">RainbowKit</span>
+      <span class="badge">Cloudflare Pages</span>
+    </p>
+  </div>
+
+  <h2>ร่วม Dev</h2>
+  <div class="card">
+    <h3>Open Source — ยินดีต้อนรับทุกคน</h3>
+    <ul>
+      <li>Fork repo แล้ว PR มาได้เลย</li>
+      <li>ดู <a href="https://github.com/monthop-gmail/jibjib-meditation-dapp/issues" target="_blank">Issues</a> สำหรับงานที่รอคนช่วย</li>
+      <li>Smart Contract (Solidity) / Frontend (React) / UX Design</li>
+    </ul>
+  </div>
+
+  <h2>LINE Bot Commands</h2>
+  <div class="card">
+    <ul>
+      <li><strong>/new</strong> — เริ่ม session ใหม่</li>
+      <li><strong>/abort</strong> — ยกเลิก prompt ที่กำลังทำ</li>
+      <li><strong>/about</strong> — แนะนำตัว bot</li>
+      <li><strong>/help</strong> — ดูคำสั่งทั้งหมด</li>
+    </ul>
+  </div>
+
+  <div class="links"><a href="${lineOAUrl}" target="_blank">เพิ่มเพื่อน LINE Bot</a></div>
+
+  <footer><p>Built with OpenCode + LINE Messaging API</p></footer>
+</div>
+</body>
+</html>`
+      return new Response(html, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      })
     }
 
     // LINE Webhook
