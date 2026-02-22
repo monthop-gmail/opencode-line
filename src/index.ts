@@ -542,15 +542,8 @@ async function handleTextMessage(
 🤖 Model: Big-Pickle (200K context, ฟรี!)
 📱 ทำงานผ่าน LINE — ถามอะไรก็ได้ ช่วยเขียน code ให้
 
-🧪 Playground — ทดลองเขียน code ผ่าน LINE
-   push แล้ว auto deploy ไป Cloudflare Pages
-   พิมพ์ /playground ดูรายละเอียด
-
-🧘 JIBJIB Meditation — ทำสมาธิ 5 นาที รับ Reward บน Blockchain
-   รองรับ JB Chain + KUB Testnet
-   เปิดแอป: https://jibjib-meditation.pages.dev
-   GitHub: https://github.com/monthop-gmail/jibjib-meditation-dapp
-   ร่วม dev ได้เลย! (Solidity / React / UX)
+🧪 Playground — พิมพ์ /playground
+🧘 Meditation — พิมพ์ /meditation
 
 📦 GitHub: https://github.com/monthop-gmail/opencode-line
 💬 คุยส่วนตัว: ${lineOAUrl}
@@ -588,6 +581,36 @@ https://github.com/monthop-gmail/opencode-line-playground-template-000
     return
   }
 
+  // Meditation command
+  if (text.toLowerCase() === "/meditation" || text.toLowerCase() === "/meditate" || text.toLowerCase() === "/สมาธิ") {
+    const meditationMsg = `🧘 JIBJIB Meditation DApp
+
+ทำสมาธิ 5 นาที รับ Reward บน Blockchain
+
+💰 รางวัลต่อรอบ:
+  JB Chain — JIBJIB 100K / JIBJIB C 50K / JBC 0.01
+  KUB Testnet — tKUB 0.001
+
+📌 กติกา:
+  ทำได้ 3 ครั้ง/วัน เว้น 3 ชม. ระหว่างรอบ
+  Bonus 2x หลัง 22:00 UTC
+  ออกจากหน้าจอ = เริ่มใหม่ (anti-cheat)
+
+🔗 เปิดแอป:
+https://jibjib-meditation.pages.dev
+
+👨‍💻 ร่วม Dev:
+  GitHub: https://github.com/monthop-gmail/jibjib-meditation-dapp
+  Issues: https://github.com/monthop-gmail/jibjib-meditation-dapp/issues
+  Tech: Solidity / React / Wagmi V2 / RainbowKit`
+
+    await lineClient.replyMessage({
+      replyToken,
+      messages: [{ type: "text", text: meditationMsg }],
+    })
+    return
+  }
+
   // Help command
   if (text.toLowerCase() === "/help" || text.toLowerCase() === "/คำสั่ง") {
     const helpMsg = `📖 คำสั่งทั้งหมด:
@@ -604,6 +627,9 @@ https://github.com/monthop-gmail/opencode-line-playground-template-000
 
 🧪 Playground
   /playground — เริ่มต้นสร้าง playground
+
+🧘 Meditation
+  /meditation — ทำสมาธิรับ Reward
 
 💬 วิธีใช้งาน:
   แชทส่วนตัว — พิมพ์ได้เลย!
