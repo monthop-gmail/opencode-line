@@ -557,7 +557,7 @@ async function handleTextMessage(
   }
 
   // Playground command
-  if (text.toLowerCase() === "/playground") {
+  if (text.toLowerCase() === "/playground" || text.toLowerCase() === "/pg") {
     const playgroundMsg = `🧪 Playground — ทดลองเขียน code ผ่าน LINE Bot
 
 📋 วิธีเริ่มต้น:
@@ -582,7 +582,7 @@ https://github.com/monthop-gmail/opencode-line-playground-template-000
   }
 
   // Meditation command
-  if (text.toLowerCase() === "/meditation" || text.toLowerCase() === "/meditate" || text.toLowerCase() === "/สมาธิ") {
+  if (text.toLowerCase() === "/meditation" || text.toLowerCase() === "/meditate" || text.toLowerCase() === "/jibjib" || text.toLowerCase() === "/สมาธิ") {
     const meditationMsg = `🧘 JIBJIB Meditation DApp
 
 ทำสมาธิ 5 นาที รับ Reward บน Blockchain
