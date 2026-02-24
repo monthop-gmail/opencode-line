@@ -3,6 +3,18 @@
   "provider": {
     "anthropic": {},
     "openai": {},
+    "google": {
+      "npm": "@ai-sdk/google",
+      "name": "Google",
+      "options": {
+        "apiKey": "{env:GOOGLE_API_KEY}"
+      },
+      "models": {
+        "gemini-3-pro-preview": { "name": "Gemini 3 Pro" },
+        "gemini-3.1-pro-preview": { "name": "Gemini 3.1 Pro" },
+        "gemini-3-flash-preview": { "name": "Gemini 3 Flash" }
+      }
+    },
     "deepseek": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "DeepSeek",

@@ -22,6 +22,9 @@ const MODELS: Record<string, { providerID: string; modelID: string; label: strin
   "gpt5mini":  { providerID: "openai",   modelID: "gpt-5-mini",               label: "GPT-5 Mini" },
   "gpt5pro":   { providerID: "openai",   modelID: "gpt-5.2-pro",              label: "GPT-5.2 Pro" },
   "codex":     { providerID: "openai",   modelID: "gpt-5.2-codex",            label: "GPT-5.2 Codex" },
+  "gemini":      { providerID: "google",   modelID: "gemini-3-pro-preview",     label: "Gemini 3 Pro" },
+  "gemini31":    { providerID: "google",   modelID: "gemini-3.1-pro-preview",   label: "Gemini 3.1 Pro" },
+  "geminiflash": { providerID: "google",   modelID: "gemini-3-flash-preview",   label: "Gemini 3 Flash" },
 }
 const DEFAULT_MODEL = "pickle"
 

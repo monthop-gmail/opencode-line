@@ -9,7 +9,7 @@ LINE app → Cloudflare Tunnel → line-bot (Bun, :3000) → OpenCode (:4096) �
 ```
 
 3 Docker services:
-- **opencode** — OpenCode server with Anthropic/DeepSeek providers (Alpine)
+- **opencode** — OpenCode server with Anthropic/DeepSeek/Google/OpenAI providers (Alpine)
 - **line-bot** — LINE webhook handler (Bun/TypeScript)
 - **cloudflared** — Cloudflare tunnel (exposes webhook to internet)
 
@@ -85,6 +85,9 @@ docker logs opencode-server --tail 30
 | `/model gpt5mini` | GPT-5 Mini | openai | $ |
 | `/model gpt5pro` | GPT-5.2 Pro | openai | $$$ |
 | `/model codex` | GPT-5.2 Codex | openai | $$ |
+| `/model gemini` | Gemini 3 Pro | google | $ |
+| `/model gemini31` | Gemini 3.1 Pro | google | $ |
+| `/model geminiflash` | Gemini 3 Flash | google | $ |
 
 - Default: **Big Pickle (Free)**
 - Model preference stored per group/user session
