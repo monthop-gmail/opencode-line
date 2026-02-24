@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-OpenCode LINE Bot — bridges LINE Messaging API to OpenCode AI coding agent via REST API. Three Docker services: LINE bot (Bun), OpenCode server (Alpine), Cloudflare tunnel.
+OpenCode LINE Bot — bridges LINE Messaging API to OpenCode AI coding agent via REST API. Three Docker services: LINE bot (Bun), OpenCode server (Alpine), Cloudflare tunnel. Supports multiple AI models via `/model` command (Anthropic, DeepSeek, OpenCode built-in).
 
 ## Commands
 
@@ -28,25 +28,29 @@ docker logs opencode-line-tunnel           # Tunnel URL (changes on restart)
 docker exec opencode-server gh auth status   # Verify GitHub CLI auth
 docker exec opencode-server cat /root/.local/state/opencode/model.json   # Check default model
 docker exec opencode-server cat /root/.local/share/opencode/auth.json    # Check OpenCode Zen auth
+docker exec opencode-server cat /root/.config/opencode/opencode.json     # Check provider config
 ```
 
 ## Architecture
 
 ```
-LINE app → Cloudflare Tunnel → line-bot (Bun, port 3000) → opencode (port 4096) → /workspace
+LINE app → Cloudflare Tunnel → line-bot (Bun, port 3000) → opencode (port 4096) → AI Model
 ```
 
-- **`src/index.ts`** — Single-file application (~910 lines). All bot logic: webhook handler, session management, OpenCode REST client, LINE message sending, image handling, group chat filtering, user memory, time context, LINE commands (/about, /help, /playground, /meditation, /cny), web /about page (HTML).
+- **`src/index.ts`** — Single-file application (~1000 lines). All bot logic: webhook handler, session management, OpenCode REST client, LINE message sending, image handling, group chat filtering, user memory, time context, model switching, LINE commands (/about, /help, /model, /playground, /meditation, /cny), web /about page (HTML).
+- **`opencode.json`** — Anthropic + DeepSeek provider configuration for OpenCode (mounted read-only into container)
 - **`Dockerfile`** — LINE bot container (`oven/bun:1`, Debian)
-- **`Dockerfile.opencode`** — OpenCode server extending `ghcr.io/anomalyco/opencode:latest` (Alpine) with dev tools (git, curl, jq, gh)
-- **`docker-compose.yml`** — Orchestrates 3 services with 2 named volumes (`opencode-data` for auth, `opencode-state` for model selection)
+- **`Dockerfile.opencode`** — OpenCode server extending `ghcr.io/anomalyco/opencode:latest` (Alpine) with dev tools (git, curl, jq, gh), python3/pip, and pre-configured model.json for Claude
+- **`docker-compose.yml`** — Orchestrates 3 services with 2 named volumes + config mount
 - **`workspace/AGENTS.md`** — Instructions file for OpenCode (big-pickle) inside the container. Tells big-pickle it runs as a LINE Bot server, not CLI terminal.
 
 ## Key Design Decisions
 
 **OpenCode REST API (not SDK):** The `@opencode-ai/sdk` is workspace-only and can't be used in standalone Docker. All calls use direct `fetch()` to `http://opencode:4096` with Basic auth (`opencode:{password}`) and `x-opencode-directory` header.
 
-**Model: big-pickle (free):** OpenCode's free built-in model (200K context, $0 cost). Requires OpenCode Zen API token in `auth.json` at `/root/.local/share/opencode/auth.json` with format: `{"opencode": {"type": "api", "key": "sk-..."}}`. Default model must be persisted in `model.json` at `/root/.local/state/opencode/model.json` with format: `{"recent":[{"providerID":"opencode","modelID":"big-pickle"}]}`. Without this, `defaultModel()` falls back to first sorted provider model (gemini-3-pro, paid).
+**Model switching via `/model` command:** Users can switch models per session. Default: `big-pickle` (free, provider: opencode). Options: `pickle` (free), `deepseek`/`reasoner` (deepseek), `haiku`/`sonnet`/`opus` (anthropic). Model preference stored in `modelPrefs` Map per group/user. The `model` parameter is passed per-message to OpenCode API `POST /session/{id}/message`.
+
+**Default model: big-pickle (free):** OpenCode's free built-in model (200K context, $0 cost). Requires OpenCode Zen API token in `auth.json`. The `model.json` is pre-configured in `Dockerfile.opencode` for Claude Sonnet as the server-side default, but the bot defaults to `pickle` via the `DEFAULT_MODEL` constant.
 
 **Question tool prevention:** Every prompt is prefixed with `[IMPORTANT: Do NOT use the question tool...]` because the question tool blocks the REST API indefinitely waiting for interactive input. On timeout (2 min), bot aborts the session and polls for partial response via `GET /session/{id}/message`.
 
@@ -65,9 +69,11 @@ LINE app → Cloudflare Tunnel → line-bot (Bun, port 3000) → opencode (port 
 
 Required in `.env` (not committed):
 - `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` — LINE Messaging API credentials
+- `ANTHROPIC_API_KEY` — Anthropic API key ([get one](https://console.anthropic.com/settings/keys))
+- `DEEPSEEK_API_KEY` — DeepSeek API key (optional, for deepseek-chat/deepseek-reasoner)
 - `CLOUDFLARE_TUNNEL_TOKEN` — Tunnel authentication
 - `OPENCODE_PASSWORD` — OpenCode server Basic auth password (default: `changeme`)
-- `GITHUB_TOKEN` — GitHub PAT for `gh` CLI inside OpenCode container
+- `GITHUB_TOKEN` — GitHub PAT for `gh` CLI inside OpenCode container (optional)
 - `LINE_OA_URL` — LINE Official Account URL (used in /about, /cny, /meditation, /playground, welcome message, and web /about page)
 - `PROMPT_TIMEOUT_MS` — Prompt timeout in ms (default: `120000`)
 
@@ -75,9 +81,10 @@ Required in `.env` (not committed):
 
 Two separate volumes are critical — they persist different data across container restarts:
 - **`opencode-data`** → `/root/.local/share/opencode` — auth.json (OpenCode Zen API token)
-- **`opencode-state`** → `/root/.local/state/opencode` — model.json (default model = big-pickle)
+- **`opencode-state`** → `/root/.local/state/opencode` — model.json (default model, pre-configured in Dockerfile)
+- **`./opencode.json`** → `/root/.config/opencode/opencode.json` (read-only bind mount — Anthropic/DeepSeek provider config)
 
-If `opencode-state` is missing, OpenCode defaults to gemini-3-pro (paid, requires payment method).
+If `opencode-state` is missing, OpenCode defaults to the model in Dockerfile.opencode (claude-sonnet-4-6).
 
 ## LINE Bot Commands
 
@@ -86,6 +93,7 @@ If `opencode-state` is missing, OpenCode defaults to gemini-3-pro (paid, require
 | `/new` | — | เริ่ม session ใหม่ |
 | `/abort` | — | ยกเลิก prompt ที่กำลังทำ |
 | `/sessions` | — | ดูสถานะ session |
+| `/model` | `/model <name>` | ดู/เปลี่ยน AI model (pickle/haiku/sonnet/opus) |
 | `/about` | `/who` | แนะนำตัว bot |
 | `/help` | `/คำสั่ง` | คำสั่งทั้งหมด |
 | `/playground` | `/pg` | Playground info |
@@ -107,6 +115,7 @@ Referenced in `/meditation` command and web `/about` page. Meditation DApp for e
 ## Gotchas
 
 - Big-pickle has no vision. Images: silent in group, short reply in 1:1 ("ยังดูรูปไม่ได้ครับ"). `workspace/AGENTS.md` also instructs AI not to pretend it can see images.
+- `model.json` is pre-configured in `Dockerfile.opencode` but may be overwritten by the `opencode-state` volume on subsequent runs.
 - `model.json` (state) and `auth.json` (data) are in **different directories** — they need separate Docker volume mounts.
 - OpenCode image entrypoint is `opencode`, so command should be `["serve", ...]` not `["opencode", "serve", ...]`.
 - Cloudflare tunnel URL changes on every container restart — must update LINE webhook URL in LINE Developer Console.

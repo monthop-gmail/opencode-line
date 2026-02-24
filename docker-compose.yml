@@ -7,11 +7,14 @@ services:
     container_name: opencode-server
     environment:
       - OPENCODE_SERVER_PASSWORD=${OPENCODE_PASSWORD:-changeme}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     volumes:
       - ${PROJECT_DIR:-./workspace}:/workspace
       - opencode-data:/root/.local/share/opencode
       - opencode-state:/root/.local/state/opencode
+      - ./opencode.json:/root/.config/opencode/opencode.json:ro
     working_dir: /workspace
     command: ["serve", "--hostname=0.0.0.0", "--port=4096"]
     restart: unless-stopped
@@ -28,6 +31,7 @@ services:
       - OPENCODE_PASSWORD=${OPENCODE_PASSWORD:-changeme}
       - OPENCODE_DIR=/workspace
       - LINE_OA_URL=${LINE_OA_URL:-}
+      - PROMPT_TIMEOUT_MS=${PROMPT_TIMEOUT_MS:-120000}
     depends_on:
       - opencode
     restart: unless-stopped

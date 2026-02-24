@@ -10,6 +10,17 @@ const opencodePassword = process.env.OPENCODE_PASSWORD ?? ""
 const opencodeDir = process.env.OPENCODE_DIR ?? "/workspace"
 const lineOAUrl = process.env.LINE_OA_URL ?? "https://line.me/ti/p/~your-oa"
 
+// --- Model config ---
+const MODELS: Record<string, { providerID: string; modelID: string; label: string }> = {
+  "pickle":    { providerID: "opencode",  modelID: "big-pickle",                label: "Big Pickle (Free)" },
+  "deepseek":  { providerID: "deepseek",  modelID: "deepseek-chat",            label: "DeepSeek Chat" },
+  "reasoner":  { providerID: "deepseek",  modelID: "deepseek-reasoner",        label: "DeepSeek Reasoner" },
+  "haiku":     { providerID: "anthropic", modelID: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+  "sonnet":    { providerID: "anthropic", modelID: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6" },
+  "opus":      { providerID: "anthropic", modelID: "claude-opus-4-6",           label: "Claude Opus 4.6" },
+}
+const DEFAULT_MODEL = "pickle"
+
 // --- Logging helper ---
 function log(...args: any[]) {
   const ts = new Intl.DateTimeFormat("sv-SE", {
@@ -76,7 +87,7 @@ const PROMPT_TIMEOUT_MS = Number(process.env.PROMPT_TIMEOUT_MS ?? 120_000) // 2 
 
 type PromptContent = string | { parts: Array<{ type: string; text?: string; image?: { url: string } }> }
 
-async function sendPrompt(sessionId: string, content: PromptContent, isGroup: boolean = false, userId?: string, quotedMessageId?: string): Promise<any> {
+async function sendPrompt(sessionId: string, content: PromptContent, isGroup: boolean = false, userId?: string, quotedMessageId?: string, model?: { providerID: string; modelID: string }): Promise<any> {
   // Prefix to prevent interactive question tool (blocks the API)
   let prefixed = `[IMPORTANT: Always respond directly with text. Do NOT use the question tool to ask clarifying questions. If unsure, make your best guess and explain your assumptions.]\n\n`
 
@@ -118,9 +129,9 @@ async function sendPrompt(sessionId: string, content: PromptContent, isGroup: bo
   const timeout = setTimeout(() => controller.abort(), PROMPT_TIMEOUT_MS)
 
   try {
-    const result = await opencodeRequest("POST", `/session/${sessionId}/message`, {
-      parts,
-    }, controller.signal)
+    const body: any = { parts }
+    if (model) body.model = model
+    const result = await opencodeRequest("POST", `/session/${sessionId}/message`, body, controller.signal)
     clearTimeout(timeout)
     return result
   } catch (err: any) {
@@ -160,14 +171,23 @@ async function abortSession(sessionId: string): Promise<void> {
 
 // --- Extract response text from all part types ---
 function extractResponse(result: any): string {
+  // Check for API error in response info
+  if (result?.info?.error) {
+    const err = result.info.error
+    const errMsg = err.data?.message || err.name || "Unknown error"
+    log("⚠️ API error:", errMsg)
+    return `❌ API Error: ${errMsg}`
+  }
+
   if (!result?.parts) return "เสร็จแล้วครับ (ไม่มีข้อความตอบกลับ)"
 
-  const parts: string[] = []
+  const textParts: string[] = []
+  const reasoningParts: string[] = []
 
   for (const p of result.parts) {
     // Direct text response
     if (p.type === "text" && p.text) {
-      parts.push(p.text)
+      textParts.push(p.text)
     }
     // Tool question - extract the question text for user
     if (p.type === "tool" && p.tool === "question" && p.state?.input?.questions) {
@@ -176,18 +196,24 @@ function extractResponse(result: any): string {
         if (q.options?.length) {
           qText += "\n" + q.options.map((o: any, i: number) => `${i + 1}. ${o.label}${o.description ? ` - ${o.description}` : ""}`).join("\n")
         }
-        if (qText) parts.push(qText)
+        if (qText) textParts.push(qText)
       }
     }
-    // Reasoning - use as fallback if no text parts
+    // Collect reasoning as fallback
     if (p.type === "reasoning" && p.text) {
-      if (!result.parts.some((x: any) => x.type === "text" && x.text)) {
-        parts.push(p.text)
-      }
+      reasoningParts.push(p.text)
     }
   }
 
-  return parts.join("\n\n") || "เสร็จแล้วครับ (ไม่มีข้อความตอบกลับ)"
+  // Use text parts if available, otherwise show last reasoning
+  if (textParts.length > 0) {
+    return textParts.join("\n\n")
+  }
+  if (reasoningParts.length > 0) {
+    const lastReasoning = reasoningParts[reasoningParts.length - 1]
+    return `[กำลังคิด]\n${lastReasoning.slice(0, 2000)}`
+  }
+  return "เสร็จแล้วครับ (ไม่มีข้อความตอบกลับ)"
 }
 
 // --- Handle incoming LINE Image message ---
@@ -237,7 +263,8 @@ async function waitForOpenCode(maxRetries = 30, delayMs = 2000): Promise<boolean
 // --- Session Management ---
 // For user chats: key = userId
 // For group chats: key = groupId
-const sessions = new Map<string, { sessionId: string; userId: string; isGroup: boolean }>()
+const sessions = new Map<string, { sessionId: string; userId: string; isGroup: boolean; timeoutCount: number }>()
+const modelPrefs = new Map<string, string>() // sessionKey → model shortname (e.g. "pickle", "sonnet")
 
 // --- User Memory ---
 interface UserProfile {
@@ -492,6 +519,46 @@ async function handleTextMessage(
     return
   }
 
+  // Model switching command
+  if (text.toLowerCase().startsWith("/model")) {
+    const arg = text.slice(6).trim().toLowerCase()
+    const currentModel = sessionKey ? (modelPrefs.get(sessionKey) ?? DEFAULT_MODEL) : DEFAULT_MODEL
+
+    if (!arg) {
+      // Show current model + options
+      const current = MODELS[currentModel]
+      const options = Object.entries(MODELS)
+        .map(([key, m]) => `  ${key === currentModel ? "→" : " "} /model ${key} — ${m.label}`)
+        .join("\n")
+      await lineClient.replyMessage({
+        replyToken,
+        messages: [{ type: "text", text: `🤖 Model ปัจจุบัน: ${current?.label ?? currentModel}\n\n${options}` }],
+      })
+      return
+    }
+
+    if (!MODELS[arg]) {
+      const available = Object.keys(MODELS).join(", ")
+      await lineClient.replyMessage({
+        replyToken,
+        messages: [{ type: "text", text: `ไม่รู้จัก model "${arg}"\n\nเลือกได้: ${available}` }],
+      })
+      return
+    }
+
+    // Switch model + reset session
+    if (sessionKey) {
+      modelPrefs.set(sessionKey, arg)
+      sessions.delete(sessionKey)
+    }
+    const m = MODELS[arg]
+    await lineClient.replyMessage({
+      replyToken,
+      messages: [{ type: "text", text: `เปลี่ยนเป็น ${m.label} แล้วครับ\nSession ใหม่พร้อมใช้งาน` }],
+    })
+    return
+  }
+
   // CNY Greeting command
   if (text.toLowerCase() === "/cny") {
     const cnyMsg = `🧧 สวัสดีปีมะเส็ง 2569 🧧
@@ -513,9 +580,11 @@ async function handleTextMessage(
 
   // About command
   if (text.toLowerCase() === "/about" || text.toLowerCase() === "/who") {
+    const currentModelKey = sessionKey ? (modelPrefs.get(sessionKey) ?? DEFAULT_MODEL) : DEFAULT_MODEL
+    const currentModelLabel = MODELS[currentModelKey]?.label ?? currentModelKey
     const aboutMsg = `🧑‍💻 สวัสดีครับ! ผมคือ OpenCode AI Bot
 
-🤖 Model: Big-Pickle (200K context, ฟรี!)
+🤖 Model: ${currentModelLabel} (พิมพ์ /model เพื่อเปลี่ยน)
 📱 ทำงานผ่าน LINE — ถามอะไรก็ได้ ช่วยเขียน code ให้
 
 🧪 Playground — พิมพ์ /playground
@@ -600,6 +669,7 @@ https://jibjib-meditation.pages.dev
   /new — เริ่มบทสนทนาใหม่
   /abort — ยกเลิกคำสั่งที่กำลังทำ
   /sessions — ดูสถานะ session
+  /model — ดู/เปลี่ยน AI model
 
 🧪 Playground
   /playground — เริ่มต้นสร้าง playground
@@ -626,7 +696,7 @@ https://jibjib-meditation.pages.dev
     try {
       const result = await createSession(`LINE: ${userId.slice(-8)}${isGroup ? " (group)" : ""}`)
       console.log("Created OpenCode session:", result.id)
-      session = { sessionId: result.id, userId, isGroup }
+      session = { sessionId: result.id, userId, isGroup, timeoutCount: 0 }
       if (sessionKey) sessions.set(sessionKey, session)
     } catch (err: any) {
       console.error("Failed to create session:", err?.message)
@@ -635,8 +705,12 @@ https://jibjib-meditation.pages.dev
     }
   }
 
+  // Resolve model for this session
+  const modelKey = sessionKey ? (modelPrefs.get(sessionKey) ?? DEFAULT_MODEL) : DEFAULT_MODEL
+  const model = MODELS[modelKey]
+
   // Send prompt to OpenCode
-  log(`➡️ Sending to OpenCode (session: ${session.sessionId.slice(-8)}): ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}`)
+  log(`➡️ Sending to OpenCode (session: ${session.sessionId.slice(-8)}, model: ${modelKey}): ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}`)
 
   // Show loading animation (free, doesn't consume replyToken)
   if (!isGroup) {
@@ -647,20 +721,35 @@ https://jibjib-meditation.pages.dev
     // Get user profile for context
     await getUserProfile(userId)
     
-    const result = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId)
+    const result = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId, model)
 
     // Extract response from all part types
     let responseText = extractResponse(result)
 
     // Timeout: no response at all → suggest /new
     if (result?._timedOut) {
-      await sendMessage(sessionKey || userId, "⏱️ AI ใช้เวลานานเกินไป ลองพิมพ์ /new แล้วถามใหม่", replyToken)
+      session.timeoutCount = (session.timeoutCount || 0) + 1
+      log(`⏱️ Timeout #${session.timeoutCount} for session ${session.sessionId.slice(-8)}`)
+      if (session.timeoutCount >= 3) {
+        await sendMessage(sessionKey || userId, "⏱️ Timeout ติดต่อกัน 3 ครั้ง — session อาจค้างอยู่\n\nแนะนำ:\n1. พิมพ์ /new เพื่อเริ่ม session ใหม่\n2. ส่งรายการงานที่ค้างทั้งหมดมาใหม่เลย\n\n(AI อาจทำ memory/plan ไว้บางส่วน จึงควรส่งงานใหม่ทั้งหมดเพื่อความแน่นอน)", replyToken)
+      } else {
+        await sendMessage(sessionKey || userId, "⏱️ AI ใช้เวลานานเกินไป ลองพิมพ์ /new แล้วถามใหม่", replyToken)
+      }
       return
     }
 
     // Timeout: partial response → show it + suggest "ต่อ"
     if (result?._truncated) {
-      responseText += '\n\n⏱️ คำตอบยังไม่ครบ รอสัก 1 นาที แล้วพิมพ์ "ต่อ" เพื่อขอส่วนที่เหลือ'
+      session.timeoutCount = (session.timeoutCount || 0) + 1
+      log(`⏱️ Partial timeout #${session.timeoutCount} for session ${session.sessionId.slice(-8)}`)
+      if (session.timeoutCount >= 3) {
+        responseText += '\n\n⚠️ Timeout ติดต่อกัน 3 ครั้ง — session อาจค้างอยู่\nแนะนำ: พิมพ์ /new แล้วส่งรายการงานค้างมาใหม่ทั้งหมด\n(AI อาจทำ memory/plan ไว้บางส่วน จึงควรส่งงานใหม่เพื่อความแน่นอน)'
+      } else {
+        responseText += '\n\n⏱️ คำตอบยังไม่ครบ รอสัก 1 นาที แล้วพิมพ์ "ต่อ" เพื่อขอส่วนที่เหลือ'
+      }
+    } else {
+      // Successful response — reset timeout counter
+      session.timeoutCount = 0
     }
 
     // In group: skip if AI decides message isn't for it
@@ -683,9 +772,9 @@ https://jibjib-meditation.pages.dev
       log("🔄 Session expired, auto-retrying with new session...")
       try {
         const newResult = await createSession(`LINE: ${userId.slice(-8)}${isGroup ? " (group)" : ""}`)
-        session = { sessionId: newResult.id, userId, isGroup }
+        session = { sessionId: newResult.id, userId, isGroup, timeoutCount: 0 }
         if (sessionKey) sessions.set(sessionKey, session)
-        const retryResult = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId)
+        const retryResult = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId, model)
         const retryText = extractResponse(retryResult)
         await sendMessage(sessionKey || userId, retryText, replyToken)
         return
