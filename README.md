@@ -81,6 +81,10 @@ docker logs opencode-server --tail 30
 | `/model haiku` | Claude Haiku 4.5 | anthropic | $ |
 | `/model sonnet` | Claude Sonnet 4.6 | anthropic | $$ |
 | `/model opus` | Claude Opus 4.6 | anthropic | $$$ |
+| `/model gpt5` | GPT-5.2 | openai | $$ |
+| `/model gpt5mini` | GPT-5 Mini | openai | $ |
+| `/model gpt5pro` | GPT-5.2 Pro | openai | $$$ |
+| `/model codex` | GPT-5.2 Codex | openai | $$ |
 
 - Default: **Big Pickle (Free)**
 - Model preference stored per group/user session
