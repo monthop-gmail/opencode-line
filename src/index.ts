@@ -973,7 +973,7 @@ Bun.serve({
 
           handleTextMessage(
             event.source.userId,
-            event.message.text,
+            event.message.text.trim(),
             event.replyToken,
             sessionKey,
             isGroup,
