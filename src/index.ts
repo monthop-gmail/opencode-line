@@ -18,6 +18,10 @@ const MODELS: Record<string, { providerID: string; modelID: string; label: strin
   "haiku":     { providerID: "anthropic", modelID: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
   "sonnet":    { providerID: "anthropic", modelID: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6" },
   "opus":      { providerID: "anthropic", modelID: "claude-opus-4-6",           label: "Claude Opus 4.6" },
+  "gpt5":      { providerID: "openai",   modelID: "gpt-5.2",                  label: "GPT-5.2" },
+  "gpt5mini":  { providerID: "openai",   modelID: "gpt-5-mini",               label: "GPT-5 Mini" },
+  "gpt5pro":   { providerID: "openai",   modelID: "gpt-5.2-pro",              label: "GPT-5.2 Pro" },
+  "codex":     { providerID: "openai",   modelID: "gpt-5.2-codex",            label: "GPT-5.2 Codex" },
 }
 const DEFAULT_MODEL = "pickle"
 

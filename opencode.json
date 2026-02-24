@@ -6,6 +6,7 @@
         "apiKey": "{env:ANTHROPIC_API_KEY}"
       }
     },
+    "openai": {},
     "deepseek": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "DeepSeek",
