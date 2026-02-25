@@ -29,7 +29,7 @@ const MODELS: Record<string, { providerID: string; modelID: string; label: strin
   "gemini31":    { providerID: "google",   modelID: "gemini-3.1-pro-preview",   label: "Gemini 3.1 Pro" },
   "geminiflash": { providerID: "google",   modelID: "gemini-3-flash-preview",   label: "Gemini 3 Flash" },
 }
-const DEFAULT_MODEL = "pickle"
+const DEFAULT_MODEL = "qwen"
 
 // --- Logging helper ---
 function log(...args: any[]) {
