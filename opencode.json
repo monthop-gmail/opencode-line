@@ -15,6 +15,19 @@
         "gemini-3-flash-preview": { "name": "Gemini 3 Flash" }
       }
     },
+    "qwen": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Qwen",
+      "options": {
+        "baseURL": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        "apiKey": "{env:QWEN_API_KEY}"
+      },
+      "models": {
+        "qwen-plus": { "name": "Qwen Plus" },
+        "qwen3-coder-plus": { "name": "Qwen3 Coder Plus" },
+        "qwen-turbo": { "name": "Qwen Turbo" }
+      }
+    },
     "deepseek": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "DeepSeek",

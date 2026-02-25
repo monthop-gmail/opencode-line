@@ -9,7 +9,7 @@ LINE app → Cloudflare Tunnel → line-bot (Bun, :3000) → OpenCode (:4096) �
 ```
 
 3 Docker services:
-- **opencode** — OpenCode server with Anthropic/DeepSeek/Google/OpenAI providers (Alpine)
+- **opencode** — OpenCode server with Anthropic/DeepSeek/Google/OpenAI/Qwen providers (Alpine)
 - **line-bot** — LINE webhook handler (Bun/TypeScript)
 - **cloudflared** — Cloudflare tunnel (exposes webhook to internet)
 

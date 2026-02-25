@@ -48,7 +48,7 @@ LINE app → Cloudflare Tunnel → line-bot (Bun, port 3000) → opencode (port 
 
 **OpenCode REST API (not SDK):** The `@opencode-ai/sdk` is workspace-only and can't be used in standalone Docker. All calls use direct `fetch()` to `http://opencode:4096` with Basic auth (`opencode:{password}`) and `x-opencode-directory` header.
 
-**Model switching via `/model` command:** Users can switch models per session. Default: `big-pickle` (free, provider: opencode). Options: `pickle` (free), `deepseek`/`reasoner` (deepseek), `haiku`/`sonnet`/`opus` (anthropic), `gpt5`/`gpt5mini`/`gpt5pro`/`codex` (openai), `gemini`/`gemini31`/`geminiflash` (google). Model preference stored in `modelPrefs` Map per group/user. The `model` parameter is passed per-message to OpenCode API `POST /session/{id}/message`.
+**Model switching via `/model` command:** Users can switch models per session. Default: `big-pickle` (free, provider: opencode). Options: `pickle` (free), `deepseek`/`reasoner` (deepseek), `haiku`/`sonnet`/`opus` (anthropic), `gpt5`/`gpt5mini`/`gpt5pro`/`codex` (openai), `gemini`/`gemini31`/`geminiflash` (google), `qwen`/`qwencoder`/`qwenturbo` (qwen). Model preference stored in `modelPrefs` Map per group/user. The `model` parameter is passed per-message to OpenCode API `POST /session/{id}/message`.
 
 **Default model: big-pickle (free):** OpenCode's free built-in model (200K context, $0 cost). Requires OpenCode Zen API token in `auth.json`. The `model.json` is pre-configured in `Dockerfile.opencode` for Claude Sonnet as the server-side default, but the bot defaults to `pickle` via the `DEFAULT_MODEL` constant.
 
@@ -72,6 +72,7 @@ Required in `.env` (not committed):
 - `ANTHROPIC_API_KEY` — Anthropic API key ([get one](https://console.anthropic.com/settings/keys))
 - `DEEPSEEK_API_KEY` — DeepSeek API key (optional, for deepseek-chat/deepseek-reasoner)
 - `GOOGLE_API_KEY` — Google AI API key (optional, for Gemini 3.x models)
+- `QWEN_API_KEY` — Qwen/DashScope API key (optional, for Qwen models)
 - `CLOUDFLARE_TUNNEL_TOKEN` — Tunnel authentication
 - `OPENCODE_PASSWORD` — OpenCode server Basic auth password (default: `changeme`)
 - `GITHUB_TOKEN` — GitHub PAT for `gh` CLI inside OpenCode container (optional)
