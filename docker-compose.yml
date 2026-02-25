@@ -33,6 +33,9 @@ services:
       - OPENCODE_DIR=/workspace
       - LINE_OA_URL=${LINE_OA_URL:-}
       - PROMPT_TIMEOUT_MS=${PROMPT_TIMEOUT_MS:-120000}
+      - PRODUCTIVITY_STORE_REPO=${PRODUCTIVITY_STORE_REPO:-}
+      - PRODUCTIVITY_STORE_TOKEN=${PRODUCTIVITY_STORE_TOKEN:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     depends_on:
       - opencode
     restart: unless-stopped

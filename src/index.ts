@@ -10,6 +10,11 @@ const opencodePassword = process.env.OPENCODE_PASSWORD ?? ""
 const opencodeDir = process.env.OPENCODE_DIR ?? "/workspace"
 const lineOAUrl = process.env.LINE_OA_URL ?? "https://line.me/ti/p/~your-oa"
 
+// --- Productivity store (GitHub repo) ---
+// Used by /p:* commands to persist group TASKS/MEMORY across bot restarts.
+const productivityStoreRepo = (process.env.PRODUCTIVITY_STORE_REPO ?? "").trim()
+const productivityStoreToken = (process.env.PRODUCTIVITY_STORE_TOKEN ?? process.env.GITHUB_TOKEN ?? "").trim()
+
 // --- Model config ---
 const MODELS: Record<string, { providerID: string; modelID: string; label: string }> = {
   "pickle":    { providerID: "opencode",  modelID: "big-pickle",                label: "Big Pickle (Free)" },
@@ -84,6 +89,271 @@ async function opencodeRequest(method: string, path: string, body?: unknown, sig
   } catch {
     return text
   }
+}
+
+// --- GitHub Contents API (for productivity state) ---
+function toSafeId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_-]/g, "_")
+}
+
+function formatBangkokYmdHm(d: Date = new Date()): string {
+  // YYYY-MM-DD HH:mm (Bangkok)
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d)
+  return parts.replace("T", " ")
+}
+
+async function githubRequest(method: string, path: string, body?: unknown): Promise<any> {
+  if (!productivityStoreToken) throw new Error("Missing PRODUCTIVITY_STORE_TOKEN")
+
+  const headers: Record<string, string> = {
+    "Accept": "application/vnd.github+json",
+    "Authorization": `Bearer ${productivityStoreToken}`,
+    "X-GitHub-Api-Version": "2022-11-28",
+  }
+  if (body !== undefined) headers["Content-Type"] = "application/json"
+
+  const resp = await fetch(`https://api.github.com${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(30_000),
+  })
+
+  const text = await resp.text()
+  if (!resp.ok) {
+    const msg = text.slice(0, 400)
+    const err = new Error(`GitHub API ${resp.status}: ${msg}`)
+    ;(err as any).status = resp.status
+    throw err
+  }
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
+  }
+}
+
+async function getRepoFile(repo: string, filePath: string): Promise<{ content: string; sha: string } | null> {
+  const encoded = filePath.split("/").map(encodeURIComponent).join("/")
+  try {
+    const data = await githubRequest("GET", `/repos/${repo}/contents/${encoded}`)
+    if (!data?.content || !data?.sha) return null
+    const raw = Buffer.from(String(data.content).replace(/\n/g, ""), "base64").toString("utf8")
+    return { content: raw, sha: String(data.sha) }
+  } catch (e: any) {
+    if (e?.status === 404) return null
+    throw e
+  }
+}
+
+async function putRepoFile(repo: string, filePath: string, content: string, message: string, sha?: string): Promise<{ sha: string }> {
+  const encoded = filePath.split("/").map(encodeURIComponent).join("/")
+  const body: any = {
+    message,
+    content: Buffer.from(content, "utf8").toString("base64"),
+  }
+  if (sha) body.sha = sha
+  const data = await githubRequest("PUT", `/repos/${repo}/contents/${encoded}`, body)
+  const newSha = data?.content?.sha || data?.commit?.sha
+  return { sha: String(newSha || "") }
+}
+
+function extractTagged(text: string, tag: string): string {
+  const re = new RegExp(`\\[${tag}\\]([\\s\\S]*?)\\[\\/${tag}\\]`, "m")
+  const m = text.match(re)
+  return (m?.[1] ?? "").trim()
+}
+
+function defaultTasksTemplate(now: string): string {
+  return [
+    `#TASKS (last updated: ${now})`,
+    "- [ ] P1: __________________ (due: ____ ) (next: __________) (owner: me)",
+    "- [ ] P2: __________________ (due: ____ ) (next: __________) (owner: ____)",
+    "",
+    "MEMORY (team shorthand)",
+    "- People: __________________",
+    "- Projects: ________________",
+    "- Terms: ___________________",
+    "",
+  ].join("\n")
+}
+
+function defaultMemoryTemplate(now: string): string {
+  return [
+    `#MEMORY (last updated: ${now})`,
+    "- People:",
+    "- Projects:",
+    "- Terms:",
+    "",
+  ].join("\n")
+}
+
+async function ensureProductivityState(storeKey: string): Promise<{ tasks: string; memory: string; tasksSha?: string; memorySha?: string; playbook: string }> {
+  if (!productivityStoreRepo) throw new Error("Missing PRODUCTIVITY_STORE_REPO")
+
+  const now = formatBangkokYmdHm()
+  const playbookFile = await getRepoFile(productivityStoreRepo, "PLAYBOOK.md")
+  const playbook = playbookFile?.content ?? ""
+
+  const baseDir = `line-groups/${storeKey}`
+  const tasksPath = `${baseDir}/TASKS.md`
+  const memoryPath = `${baseDir}/MEMORY.md`
+
+  let tasksFile = await getRepoFile(productivityStoreRepo, tasksPath)
+  let memoryFile = await getRepoFile(productivityStoreRepo, memoryPath)
+
+  if (!tasksFile) {
+    const content = defaultTasksTemplate(now)
+    await putRepoFile(productivityStoreRepo, tasksPath, content, `init tasks for ${storeKey}`)
+    tasksFile = { content, sha: "" }
+  }
+  if (!memoryFile) {
+    const content = defaultMemoryTemplate(now)
+    await putRepoFile(productivityStoreRepo, memoryPath, content, `init memory for ${storeKey}`)
+    memoryFile = { content, sha: "" }
+  }
+
+  return {
+    tasks: tasksFile.content,
+    memory: memoryFile.content,
+    tasksSha: tasksFile.sha,
+    memorySha: memoryFile.sha,
+    playbook,
+  }
+}
+
+async function writeProductivityState(storeKey: string, tasks: string, memory: string): Promise<void> {
+  const baseDir = `line-groups/${storeKey}`
+  const tasksPath = `${baseDir}/TASKS.md`
+  const memoryPath = `${baseDir}/MEMORY.md`
+
+  // Try update with SHA; on conflict, refetch and retry once.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const existingTasks = await getRepoFile(productivityStoreRepo, tasksPath)
+    const existingMemory = await getRepoFile(productivityStoreRepo, memoryPath)
+    try {
+      await putRepoFile(productivityStoreRepo, tasksPath, tasks, `update tasks for ${storeKey}`, existingTasks?.sha)
+      await putRepoFile(productivityStoreRepo, memoryPath, memory, `update memory for ${storeKey}`, existingMemory?.sha)
+      return
+    } catch (e: any) {
+      const msg = String(e?.message ?? "")
+      if (attempt === 0 && (msg.includes("409") || msg.toLowerCase().includes("sha"))) continue
+      throw e
+    }
+  }
+}
+
+async function handleProductivityCommand(
+  rawText: string,
+  replyToken: string,
+  sessionKey: string,
+  isGroup: boolean,
+  userId: string,
+): Promise<void> {
+  const lower = rawText.trim().toLowerCase()
+  const storeKey = `${isGroup ? "group" : "user"}_${toSafeId(sessionKey || userId)}`
+
+  if (!productivityStoreRepo) {
+    await sendMessage(sessionKey || userId, "ยังไม่ได้ตั้งค่า PRODUCTIVITY_STORE_REPO ครับ", replyToken)
+    return
+  }
+  if (!productivityStoreToken) {
+    await sendMessage(sessionKey || userId, "ยังไม่ได้ตั้งค่า PRODUCTIVITY_STORE_TOKEN ครับ", replyToken)
+    return
+  }
+
+  // Ensure files exist
+  const state = await ensureProductivityState(storeKey)
+  const now = formatBangkokYmdHm()
+
+  // /p:start
+  if (lower === "/p:start") {
+    const reply = extractTasksReply(state.tasks) || `#TASKS (last updated: ${now})\n- [ ] P1: (ยังไม่มีงาน) (due: -) (next: ใช้ /p:add เพิ่มงาน) (owner: me)`
+    await sendMessage(sessionKey || userId, reply, replyToken)
+    return
+  }
+
+  // For LLM-backed commands, create a fresh OpenCode session (do not rely on prior chat)
+  const opSession = await createSession(`Productivity: ${storeKey}`)
+
+  const userRequest = rawText.replace(/^\/p:[a-z-]+\s*/i, "").trim()
+
+  let instruction = ""
+  if (lower.startsWith("/p:add")) {
+    instruction = `Update TASKS and MEMORY based on this new request: ${userRequest || "(no text)"}`
+  } else if (lower === "/p:update") {
+    instruction = "Triage and refresh TASKS and MEMORY: flag near due/overdue, clarify next steps, keep it short and actionable."
+  } else if (lower.startsWith("/p:today")) {
+    instruction = `Create a simple timeboxed plan for today based on TASKS. Availability: ${userRequest || "(not provided)"}.`
+  } else {
+    await sendMessage(sessionKey || userId, "คำสั่ง /p ไม่ถูกต้องครับ ใช้: /p:start, /p:add, /p:update, /p:today", replyToken)
+    return
+  }
+
+  // Build prompt with playbook + current state
+  const prompt = [
+    "You are a productivity assistant for a LINE group.",
+    "You must not ask clarifying questions.",
+    "Return EXACTLY 3 tagged sections:",
+    "[TASKS] ... [/TASKS]",
+    "[MEMORY] ... [/MEMORY]",
+    "[REPLY] ... [/REPLY]",
+    "Rules:",
+    "- ASCII only.",
+    `- Update last updated to: ${now}`,
+    "- TASKS must start with '#TASKS (last updated: ...)' and use '- [ ]' checkboxes.",
+    "- REPLY must be suitable for LINE and must start with '#TASKS (last updated: ...)'.",
+    "- Do not include secrets or sensitive customer PII.",
+    "",
+    "PLAYBOOK (reference):",
+    state.playbook || "(missing)",
+    "",
+    "CURRENT TASKS.md:",
+    state.tasks,
+    "",
+    "CURRENT MEMORY.md:",
+    state.memory,
+    "",
+    "REQUEST:",
+    instruction,
+  ].join("\n")
+
+  const result = await sendPrompt(opSession.id, prompt, isGroup, userId, undefined, undefined)
+  const fullText = extractResponse(result)
+
+  const newTasks = extractTagged(fullText, "TASKS")
+  const newMemory = extractTagged(fullText, "MEMORY")
+  const reply = extractTagged(fullText, "REPLY")
+
+  // /p:today can be read-only (but we still accept updated files if provided)
+  if (newTasks && newMemory) {
+    await writeProductivityState(storeKey, newTasks + "\n", newMemory + "\n")
+  }
+
+  if (reply) {
+    await sendMessage(sessionKey || userId, reply, replyToken)
+    return
+  }
+
+  // Fallback: show tasks header
+  const fallback = newTasks ? extractTasksReply(newTasks) : extractTasksReply(state.tasks)
+  await sendMessage(sessionKey || userId, fallback || "ทำรายการให้แล้วครับ", replyToken)
+}
+
+function extractTasksReply(tasksMd: string): string {
+  // Keep it short for LINE: first ~25 lines
+  const lines = tasksMd.replace(/\r\n/g, "\n").split("\n")
+  const kept = lines.slice(0, 25).join("\n").trim()
+  return kept
 }
 
 async function createSession(title: string): Promise<{ id: string }> {
@@ -523,6 +793,18 @@ async function handleTextMessage(
       replyToken,
       messages: [{ type: "text", text: msg }],
     })
+    return
+  }
+
+  // Productivity commands (persisted in GitHub)
+  if (text.toLowerCase().startsWith("/p:")) {
+    const key = sessionKey || userId
+    try {
+      await handleProductivityCommand(text, replyToken, key, isGroup, userId)
+    } catch (err: any) {
+      const msg = err?.message?.slice(0, 200) ?? "ไม่ทราบสาเหตุ"
+      await sendMessage(key, `เกิดข้อผิดพลาดใน /p:* ครับ: ${msg}`, replyToken)
+    }
     return
   }
 
