@@ -10,26 +10,38 @@ const opencodePassword = process.env.OPENCODE_PASSWORD ?? ""
 const opencodeDir = process.env.OPENCODE_DIR ?? "/workspace"
 const lineOAUrl = process.env.LINE_OA_URL ?? "https://line.me/ti/p/~your-oa"
 
-// --- Model config ---
+// --- Model config (use /model provider/model to switch) ---
 const MODELS: Record<string, { providerID: string; modelID: string; label: string }> = {
-  "pickle":    { providerID: "opencode",  modelID: "big-pickle",                label: "Big Pickle (Free)" },
-  "deepseek":  { providerID: "deepseek",  modelID: "deepseek-chat",            label: "DeepSeek Chat" },
-  "reasoner":  { providerID: "deepseek",  modelID: "deepseek-reasoner",        label: "DeepSeek Reasoner" },
-  "haiku":     { providerID: "anthropic", modelID: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-  "sonnet":    { providerID: "anthropic", modelID: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6" },
-  "opus":      { providerID: "anthropic", modelID: "claude-opus-4-6",           label: "Claude Opus 4.6" },
-  "gpt5":      { providerID: "openai",   modelID: "gpt-5.2",                  label: "GPT-5.2" },
-  "gpt5mini":  { providerID: "openai",   modelID: "gpt-5-mini",               label: "GPT-5 Mini" },
-  "gpt5pro":   { providerID: "openai",   modelID: "gpt-5.2-pro",              label: "GPT-5.2 Pro" },
-  "codex":     { providerID: "openai",   modelID: "gpt-5.2-codex",            label: "GPT-5.2 Codex" },
-  "qwen":        { providerID: "qwen",     modelID: "qwen-plus",                label: "Qwen Plus" },
-  "qwencoder":   { providerID: "qwen",     modelID: "qwen3-coder-plus",         label: "Qwen3 Coder" },
-  "qwenturbo":   { providerID: "qwen",     modelID: "qwen-turbo",               label: "Qwen Turbo" },
-  "gemini":      { providerID: "google",   modelID: "gemini-3-pro-preview",     label: "Gemini 3 Pro" },
-  "gemini31":    { providerID: "google",   modelID: "gemini-3.1-pro-preview",   label: "Gemini 3.1 Pro" },
-  "geminiflash": { providerID: "google",   modelID: "gemini-3-flash-preview",   label: "Gemini 3 Flash" },
+  // opencode (Free via Zen)
+  "opencode/big-pickle":              { providerID: "opencode",  modelID: "big-pickle",                label: "Big Pickle (Free)" },
+  "opencode/claude-opus-4-6":         { providerID: "opencode",  modelID: "claude-opus-4-6",           label: "Claude Opus 4.6 (Free)" },
+  "opencode/gpt-5.3-codex":           { providerID: "opencode",  modelID: "gpt-5.3-codex",             label: "GPT-5.3 Codex (Free)" },
+  "opencode/gemini-3.1-pro":          { providerID: "opencode",  modelID: "gemini-3.1-pro",            label: "Gemini 3.1 Pro (Free)" },
+  "opencode/kimi-k2.5":               { providerID: "opencode",  modelID: "kimi-k2.5",                 label: "Kimi K2.5 (Free)" },
+  "opencode/glm-5":                   { providerID: "opencode",  modelID: "glm-5",                     label: "GLM-5 (Free)" },
+  "opencode/minimax-m2.5-free":       { providerID: "opencode",  modelID: "minimax-m2.5-free",         label: "MiniMax M2.5 (Free)" },
+  "opencode/trinity-large-preview-free": { providerID: "opencode", modelID: "trinity-large-preview-free", label: "Trinity Large (Free)" },
+  // anthropic (OAuth)
+  "anthropic/claude-opus-4-6":        { providerID: "anthropic", modelID: "claude-opus-4-6",           label: "Claude Opus 4.6" },
+  "anthropic/claude-sonnet-4-6":      { providerID: "anthropic", modelID: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6" },
+  "anthropic/claude-haiku-4-5":       { providerID: "anthropic", modelID: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+  // deepseek (API key)
+  "deepseek/deepseek-chat":           { providerID: "deepseek",  modelID: "deepseek-chat",             label: "DeepSeek Chat" },
+  "deepseek/deepseek-reasoner":       { providerID: "deepseek",  modelID: "deepseek-reasoner",         label: "DeepSeek Reasoner" },
+  // google (API key)
+  "google/gemini-3.1-pro-preview":    { providerID: "google",    modelID: "gemini-3.1-pro-preview",    label: "Gemini 3.1 Pro" },
+  "google/gemini-3-pro-preview":      { providerID: "google",    modelID: "gemini-3-pro-preview",      label: "Gemini 3 Pro" },
+  "google/gemini-3-flash-preview":    { providerID: "google",    modelID: "gemini-3-flash-preview",    label: "Gemini 3 Flash" },
+  // openai (OAuth)
+  "openai/gpt-5.3-codex":             { providerID: "openai",    modelID: "gpt-5.3-codex",             label: "GPT-5.3 Codex" },
+  "openai/gpt-5.2":                   { providerID: "openai",    modelID: "gpt-5.2",                   label: "GPT-5.2" },
+  "openai/gpt-5.2-codex":             { providerID: "openai",    modelID: "gpt-5.2-codex",             label: "GPT-5.2 Codex" },
+  // qwen (API key)
+  "qwen/qwen-plus":                   { providerID: "qwen",      modelID: "qwen-plus",                 label: "Qwen Plus" },
+  "qwen/qwen3-coder-plus":            { providerID: "qwen",      modelID: "qwen3-coder-plus",          label: "Qwen3 Coder" },
+  "qwen/qwen-turbo":                  { providerID: "qwen",      modelID: "qwen-turbo",                label: "Qwen Turbo" },
 }
-const DEFAULT_MODEL = "qwen"
+const DEFAULT_MODEL = "qwen/qwen-plus"
 
 // --- Logging helper ---
 function log(...args: any[]) {
@@ -535,23 +547,43 @@ async function handleTextMessage(
     const currentModel = sessionKey ? (modelPrefs.get(sessionKey) ?? DEFAULT_MODEL) : DEFAULT_MODEL
 
     if (!arg) {
-      // Show current model + options
+      // Show current model + options grouped by provider
       const current = MODELS[currentModel]
-      const options = Object.entries(MODELS)
-        .map(([key, m]) => `  ${key === currentModel ? "→" : " "} /model ${key} — ${m.label}`)
-        .join("\n")
+      const grouped: Record<string, string[]> = {}
+      for (const [key, m] of Object.entries(MODELS)) {
+        const provider = key.split("/")[0]
+        if (!grouped[provider]) grouped[provider] = []
+        grouped[provider].push(`  ${key === currentModel ? "→" : " "} ${key}`)
+      }
+      const options = Object.entries(grouped)
+        .map(([provider, keys]) => `[${provider}]\n${keys.join("\n")}`)
+        .join("\n\n")
       await lineClient.replyMessage({
         replyToken,
-        messages: [{ type: "text", text: `🤖 Model ปัจจุบัน: ${current?.label ?? currentModel}\n\n${options}` }],
+        messages: [{ type: "text", text: `🤖 Model: ${current?.label ?? currentModel}\n\nใช้: /model provider/model\n\n${options}` }],
       })
       return
     }
 
     if (!MODELS[arg]) {
-      const available = Object.keys(MODELS).join(", ")
+      // Try partial match (e.g. "qwen-plus" → "qwen/qwen-plus")
+      const partial = Object.keys(MODELS).find(k => k.endsWith("/" + arg))
+      if (partial) {
+        // Auto-resolve partial match
+        if (sessionKey) {
+          modelPrefs.set(sessionKey, partial)
+          sessions.delete(sessionKey)
+        }
+        const m = MODELS[partial]
+        await lineClient.replyMessage({
+          replyToken,
+          messages: [{ type: "text", text: `เปลี่ยนเป็น ${m.label} แล้วครับ\n(${partial})\nSession ใหม่พร้อมใช้งาน` }],
+        })
+        return
+      }
       await lineClient.replyMessage({
         replyToken,
-        messages: [{ type: "text", text: `ไม่รู้จัก model "${arg}"\n\nเลือกได้: ${available}` }],
+        messages: [{ type: "text", text: `ไม่รู้จัก model "${arg}"\n\nพิมพ์ /model ดูรายการทั้งหมด` }],
       })
       return
     }
