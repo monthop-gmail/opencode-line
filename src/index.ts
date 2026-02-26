@@ -43,7 +43,7 @@ const MODELS: Record<string, { providerID: string; modelID: string; label: strin
   "qwen/qwen3-coder-plus":            { providerID: "qwen",      modelID: "qwen3-coder-plus",          label: "Qwen3 Coder" },
   "qwen/qwen-turbo":                  { providerID: "qwen",      modelID: "qwen-turbo",                label: "Qwen Turbo" },
 }
-const DEFAULT_MODEL = "qwen/qwen-plus"
+const DEFAULT_MODEL = "qwen/qwen3.5-plus"
 
 // --- Logging helper ---
 function log(...args: any[]) {
