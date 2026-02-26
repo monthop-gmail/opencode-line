@@ -37,6 +37,8 @@ const MODELS: Record<string, { providerID: string; modelID: string; label: strin
   "openai/gpt-5.2":                   { providerID: "openai",    modelID: "gpt-5.2",                   label: "GPT-5.2" },
   "openai/gpt-5.2-codex":             { providerID: "openai",    modelID: "gpt-5.2-codex",             label: "GPT-5.2 Codex" },
   // qwen (API key)
+  "qwen/qwen3.5-plus":                { providerID: "qwen",      modelID: "qwen3.5-plus",              label: "Qwen3.5 Plus (1M)" },
+  "qwen/qwen3.5-397b-a17b":           { providerID: "qwen",      modelID: "qwen3.5-397b-a17b",         label: "Qwen3.5 397B" },
   "qwen/qwen-plus":                   { providerID: "qwen",      modelID: "qwen-plus",                 label: "Qwen Plus" },
   "qwen/qwen3-coder-plus":            { providerID: "qwen",      modelID: "qwen3-coder-plus",          label: "Qwen3 Coder" },
   "qwen/qwen-turbo":                  { providerID: "qwen",      modelID: "qwen-turbo",                label: "Qwen Turbo" },
