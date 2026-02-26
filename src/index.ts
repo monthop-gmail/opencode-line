@@ -10,6 +10,10 @@ const opencodePassword = process.env.OPENCODE_PASSWORD ?? ""
 const opencodeDir = process.env.OPENCODE_DIR ?? "/workspace"
 const lineOAUrl = process.env.LINE_OA_URL ?? "https://line.me/ti/p/~your-oa"
 
+// --- Typhoon OCR Config ---
+const typhoonApiKey = process.env.TYPHOON_OCR_API_KEY ?? ""
+const typhoonApiUrl = "https://api.opentyphoon.ai/v1/chat/completions"
+
 // --- Model config ---
 const MODELS: Record<string, { providerID: string; modelID: string; label: string }> = {
   "pickle":    { providerID: "opencode",  modelID: "big-pickle",                label: "Big Pickle (Free)" },
@@ -223,7 +227,55 @@ function extractResponse(result: any): string {
   return "เสร็จแล้วครับ (ไม่มีข้อความตอบกลับ)"
 }
 
-// --- Handle incoming LINE Image message ---
+// --- Typhoon OCR API ---
+async function callTyphoonOCR(imageBuffer: ArrayBuffer): Promise<string> {
+  if (!typhoonApiKey) {
+    throw new Error("Missing TYPHOON_OCR_API_KEY")
+  }
+
+  // Convert ArrayBuffer to base64
+  const base64Image = Buffer.from(imageBuffer).toString('base64')
+  
+  const response = await fetch(typhoonApiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${typhoonApiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'typhoon-ocr',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${base64Image}`,
+              },
+            },
+            {
+              type: 'text',
+              text: 'Please extract all text from this image. Output only the text content in Markdown format.',
+            },
+          ],
+        },
+      ],
+      max_tokens: 4096,
+    }),
+    signal: AbortSignal.timeout(60_000),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Typhoon OCR API ${response.status}: ${errorText.slice(0, 300)}`)
+  }
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content || ''
+}
+
+// --- Handle incoming LINE Image message with OCR ---
 async function handleImageMessage(
   userId: string,
   messageId: string,
@@ -232,15 +284,56 @@ async function handleImageMessage(
   isGroup: boolean = false,
 ): Promise<void> {
   const userName = userProfiles.get(userId)?.displayName || userId.slice(-8)
-  log(`📷 Image from ${userName}, group: ${isGroup}, key: ${sessionKey?.slice(-8)} (no vision)`)
+  log(`📷 Image from ${userName}, group: ${isGroup}, key: ${sessionKey?.slice(-8)}`)
 
-  // Model has no vision — silent in group, short reply in 1:1
+  // Silent in group chat
   if (isGroup) return
 
+  // Show loading
   await lineClient.replyMessage({
     replyToken,
-    messages: [{ type: "text", text: "ยังดูรูปไม่ได้ครับ ส่งเป็นข้อความแทนนะ" }],
+    messages: [{ type: "text", text: "📷 กำลังอ่านรูปด้วย OCR...\n(อาจใช้เวลา 2-5 วินาที)" }],
   }).catch(() => {})
+
+  // Download image from LINE
+  let imageContent: ArrayBuffer
+  try {
+    const blob = await lineBlobClient.getMessageContent(messageId)
+    imageContent = await blob.arrayBuffer()
+  } catch (err: any) {
+    log(`❌ Failed to download image: ${err?.message}`)
+    await sendMessage(sessionKey || userId, "ดาวน์โหลดรูปไม่สำเร็จครับ", replyToken)
+    return
+  }
+
+  // Call Typhoon OCR
+  try {
+    const ocrText = await callTyphoonOCR(imageContent)
+    log(`📖 OCR result (${ocrText.length} chars)`)
+
+    if (!ocrText.trim()) {
+      await sendMessage(sessionKey || userId, "ไม่พบข้อความในรูปครับ", replyToken)
+      return
+    }
+
+    // Save OCR result to temp folder
+    const tempDir = `/workspace/temp/${sessionKey}`
+    try {
+      await Bun.write(`${tempDir}/.gitkeep`, '')
+    } catch {}
+
+    const timestamp = Date.now()
+    const filePath = `${tempDir}/${timestamp}_ocr_result.md`
+    await Bun.write(filePath, ocrText)
+    log(`💾 Saved OCR result to ${filePath}`)
+
+    // Send OCR result to user
+    const response = `📋 ผลการอ่านรูป (OCR):\n\n${ocrText}\n\n---\n💾 บันทึกที่: \`${filePath}\``
+    await sendMessage(sessionKey || userId, response, replyToken)
+  } catch (err: any) {
+    log(`❌ OCR error: ${err?.message}`)
+    await sendMessage(sessionKey || userId, `OCR ไม่สำเร็จ: ${err?.message?.slice(0, 200)}`, replyToken)
+  }
 }
 
 // --- Handle incoming LINE File message ---
@@ -824,6 +917,11 @@ https://jibjib-meditation.pages.dev
 📎 ไฟล์
   ส่งไฟล์ .txt, .csv, .json, .js, .ts, .py, .md, .log
   Bot จะอ่านและวิเคราะห์ให้ครับ (ไฟล์แยกตามห้อง ไม่ปนกัน)
+
+📷 OCR (อ่านข้อความในรูป)
+  ส่งรูปภาพ → Bot จะอ่านข้อความด้วย Typhoon OCR
+  รองรับภาษาไทยแม่นยำมาก (ฟรี 20 requests/min)
+  ผลลัพธ์บันทึกที่ /workspace/temp/{sessionKey}/
 
 🧪 Playground
   /playground — เริ่มต้นสร้าง playground
