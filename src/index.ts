@@ -21,6 +21,10 @@ const MODELS: Record<string, { providerID: string; modelID: string; label: strin
   "opencode/glm-5":                   { providerID: "opencode",  modelID: "glm-5",                     label: "GLM-5 (Free)" },
   "opencode/minimax-m2.5-free":       { providerID: "opencode",  modelID: "minimax-m2.5-free",         label: "MiniMax M2.5 (Free)" },
   "opencode/trinity-large-preview-free": { providerID: "opencode", modelID: "trinity-large-preview-free", label: "Trinity Large (Free)" },
+  "opencode/claude-sonnet-4-6":        { providerID: "opencode",  modelID: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6 (Free)" },
+  "opencode/gpt-5.2-codex":            { providerID: "opencode",  modelID: "gpt-5.2-codex",             label: "GPT-5.2 Codex (Free)" },
+  "opencode/kimi-k2-thinking":         { providerID: "opencode",  modelID: "kimi-k2-thinking",          label: "Kimi K2 Thinking (Free)" },
+  "opencode/minimax-m2.5":             { providerID: "opencode",  modelID: "minimax-m2.5",              label: "MiniMax M2.5 (Free)" },
   // anthropic (OAuth)
   "anthropic/claude-opus-4-6":        { providerID: "anthropic", modelID: "claude-opus-4-6",           label: "Claude Opus 4.6" },
   "anthropic/claude-sonnet-4-6":      { providerID: "anthropic", modelID: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6" },
@@ -36,6 +40,9 @@ const MODELS: Record<string, { providerID: string; modelID: string; label: strin
   "openai/gpt-5.3-codex":             { providerID: "openai",    modelID: "gpt-5.3-codex",             label: "GPT-5.3 Codex" },
   "openai/gpt-5.2":                   { providerID: "openai",    modelID: "gpt-5.2",                   label: "GPT-5.2" },
   "openai/gpt-5.2-codex":             { providerID: "openai",    modelID: "gpt-5.2-codex",             label: "GPT-5.2 Codex" },
+  "openai/gpt-5.3-codex-spark":       { providerID: "openai",    modelID: "gpt-5.3-codex-spark",       label: "GPT-5.3 Codex Spark" },
+  // google (API key) - custom tools variant
+  "google/gemini-3.1-pro-preview-customtools": { providerID: "google", modelID: "gemini-3.1-pro-preview-customtools", label: "Gemini 3.1 Pro CustomTools" },
   // qwen (API key)
   "qwen/qwen3.5-plus":                { providerID: "qwen",      modelID: "qwen3.5-plus",              label: "Qwen3.5 Plus (1M)" },
   "qwen/qwen3.5-397b-a17b":           { providerID: "qwen",      modelID: "qwen3.5-397b-a17b",         label: "Qwen3.5 397B" },
