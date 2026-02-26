@@ -243,6 +243,149 @@ async function handleImageMessage(
   }).catch(() => {})
 }
 
+// --- Handle incoming LINE File message ---
+async function handleFileMessage(
+  userId: string,
+  messageId: string,
+  fileName: string,
+  fileSize: number,
+  replyToken: string,
+  sessionKey: string | null = userId,
+  isGroup: boolean = false,
+): Promise<void> {
+  const userName = userProfiles.get(userId)?.displayName || userId.slice(-8)
+  log(`📎 File from ${userName}: ${fileName} (${fileSize} bytes), group: ${isGroup}, key: ${sessionKey?.slice(-8)}`)
+
+  // Only handle text files
+  const textExtensions = ['.txt', '.csv', '.json', '.js', '.ts', '.py', '.md', '.log']
+  const isTextFile = textExtensions.some(ext => fileName.toLowerCase().endsWith(ext))
+  
+  if (!isTextFile) {
+    if (!isGroup) {
+      await lineClient.replyMessage({
+        replyToken,
+        messages: [{ type: "text", text: `รองรับเฉพาะไฟล์ข้อความ (.txt, .csv, .json, .js, .ts, .py, .md, .log) ครับ` }],
+      })
+    }
+    return
+  }
+
+  // Download file from LINE
+  let fileContent: ArrayBuffer
+  try {
+    const blob = await lineBlobClient.getMessageContent(messageId)
+    fileContent = await blob.arrayBuffer()
+  } catch (err: any) {
+    log(`❌ Failed to download file: ${err?.message}`)
+    if (!isGroup) {
+      await lineClient.replyMessage({
+        replyToken,
+        messages: [{ type: "text", text: `ดาวน์โหลดไฟล์ไม่สำเร็จครับ` }],
+      })
+    }
+    return
+  }
+
+  // Ensure temp directory exists for this session
+  const tempDir = `/workspace/temp/${sessionKey}`
+  try {
+    await Bun.write(`${tempDir}/.gitkeep`, '')
+  } catch {}
+
+  // Save file to temp with unique name
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const timestamp = Date.now()
+  const filePath = `${tempDir}/${timestamp}_${safeFileName}`
+  
+  try {
+    await Bun.write(filePath, fileContent)
+    log(`💾 Saved file to ${filePath}`)
+  } catch (err: any) {
+    log(`❌ Failed to save file: ${err?.message}`)
+    if (!isGroup) {
+      await lineClient.replyMessage({
+        replyToken,
+        messages: [{ type: "text", text: `บันทึกไฟล์ไม่สำเร็จครับ` }],
+      })
+    }
+    return
+  }
+
+  // Read file content
+  let content: string
+  try {
+    content = await Bun.file(filePath).text()
+    log(`📖 Read ${content.length} chars from ${fileName}`)
+  } catch (err: any) {
+    log(`❌ Failed to read file: ${err?.message}`)
+    if (!isGroup) {
+      await lineClient.replyMessage({
+        replyToken,
+        messages: [{ type: "text", text: `อ่านไฟล์ไม่สำเร็จครับ` }],
+      })
+    }
+    return
+  }
+
+  // Send acknowledgment
+  if (!isGroup) {
+    await lineClient.replyMessage({
+      replyToken,
+      messages: [{ type: "text", text: `📎 รับไฟล์ ${fileName} แล้วครับ (${content.length} ตัวอักษร)\n\nกำลังวิเคราะห์...` }],
+    })
+  }
+
+  // Get or create OpenCode session
+  let session = sessionKey ? sessions.get(sessionKey) : null
+
+  if (!session) {
+    console.log("Creating new OpenCode session for file...")
+    try {
+      const result = await createSession(`LINE: ${userId.slice(-8)}${isGroup ? " (group)" : ""}`)
+      session = { sessionId: result.id, userId, isGroup, timeoutCount: 0 }
+      if (sessionKey) sessions.set(sessionKey, session)
+    } catch (err: any) {
+      console.error("Failed to create session:", err?.message)
+      if (!isGroup) {
+        await sendMessage(sessionKey || userId, "สร้าง session ไม่สำเร็จครับ ลองส่งไฟล์ใหม่อีกครั้ง", replyToken)
+      }
+      return
+    }
+  }
+
+  // Resolve model for this session
+  const modelKey = sessionKey ? (modelPrefs.get(sessionKey) ?? DEFAULT_MODEL) : DEFAULT_MODEL
+  const model = MODELS[modelKey]
+
+  // Send file content to AI
+  const prompt = `📎 ไฟล์: ${fileName}\n\n${content}`
+  log(`➡️ Sending file content to OpenCode: ${fileName} (${content.length} chars)`)
+
+  try {
+    await getUserProfile(userId)
+    const result = await sendPrompt(session.sessionId, prompt, isGroup, userId, undefined, model)
+    const responseText = extractResponse(result)
+
+    // Handle timeout
+    if (result?._timedOut || result?._truncated) {
+      session.timeoutCount = (session.timeoutCount || 0) + 1
+      if (session.timeoutCount >= 3) {
+        responseText += '\n\n⚠️ Timeout ติดต่อกัน 3 ครั้ง — session อาจค้างอยู่\nแนะนำ: พิมพ์ /new แล้วส่งไฟล์ใหม่'
+      }
+    } else {
+      session.timeoutCount = 0
+    }
+
+    log(`⬅️ Response (${responseText.length} chars): ${responseText.slice(0, 100)}...`)
+    await sendMessage(sessionKey || userId, responseText, replyToken)
+  } catch (err: any) {
+    log(`❌ OpenCode prompt error: ${err?.message}`)
+    if (!isGroup) {
+      await sendMessage(sessionKey || userId, `วิเคราะห์ไฟล์ไม่สำเร็จ: ${err?.message?.slice(0, 200)}`, replyToken)
+    }
+  }
+}
+
 // --- Wait for OpenCode server ---
 async function waitForOpenCode(maxRetries = 30, delayMs = 2000): Promise<boolean> {
   for (let i = 0; i < maxRetries; i++) {
@@ -678,6 +821,10 @@ https://jibjib-meditation.pages.dev
   /sessions — ดูสถานะ session
   /model — ดู/เปลี่ยน AI model
 
+📎 ไฟล์
+  ส่งไฟล์ .txt, .csv, .json, .js, .ts, .py, .md, .log
+  Bot จะอ่านและวิเคราะห์ให้ครับ (ไฟล์แยกตามห้อง ไม่ปนกัน)
+
 🧪 Playground
   /playground — เริ่มต้นสร้าง playground
 
@@ -1000,6 +1147,28 @@ Bun.serve({
             isGroup,
           ).catch((err) => {
             console.error("Error handling image message:", err)
+          })
+        }
+
+        // Handle file messages (including group)
+        if (
+          event.type === "message" &&
+          event.message?.type === "file" &&
+          event.source?.userId
+        ) {
+          const isGroup = !!event.source?.groupId || !!event.source?.roomId
+          const sessionKey = getSessionKey(event)
+
+          handleFileMessage(
+            event.source.userId,
+            event.message.id,
+            event.message.fileName,
+            event.message.fileSize,
+            event.replyToken,
+            sessionKey,
+            isGroup,
+          ).catch((err) => {
+            console.error("Error handling file message:", err)
           })
         }
       }
