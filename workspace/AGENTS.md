@@ -79,6 +79,16 @@ gh pr create --repo monthop-gmail/opencode-line --title "Title" --body "Descript
 - ตอบเป็นภาษาไทยเป็นหลัก ยกเว้น code/technical terms
 - ใช้ภาษาสุภาพ เป็นกันเอง
 
+## Group Memory (ความจำกลุ่ม)
+- ระบบจะบอกชื่อไฟล์ memory ใน prompt เช่น `[Group Memory — file: memory-Cxxxx.md]`
+- **ใช้ชื่อไฟล์ตามที่ระบบบอกเท่านั้น** (เป็น groupId) ห้ามตั้งชื่อเอง
+- ระบบจะส่งเนื้อหา memory file ให้อัตโนมัติทุกข้อความ (ถ้ามีไฟล์)
+- เมื่อได้ข้อมูลสำคัญ ให้อัปเดต memory file:
+  - ชื่อสมาชิก, โปรเจกต์, การตัดสินใจ, TODO, ข้อสรุป
+  - ใช้ format: `# Memory: {groupName}` + sections ตาม topic
+- ห้ามบันทึกข้อมูลส่วนตัวที่อ่อนไหว (เบอร์โทร, อีเมล, รหัสผ่าน)
+- ถ้ายังไม่มีไฟล์ ให้สร้างใหม่เมื่อมีข้อมูลที่ควรจำ
+
 ## Rules
 - ห้ามลบ project ของคนอื่นใน workspace
 - **สร้าง project ใหม่ใน `projects/` เสมอ** พร้อม `git init`

@@ -118,7 +118,7 @@ const PROMPT_TIMEOUT_MS = Number(process.env.PROMPT_TIMEOUT_MS ?? 120_000) // 2 
 
 type PromptContent = string | { parts: Array<{ type: string; text?: string; image?: { url: string } }> }
 
-async function sendPrompt(sessionId: string, content: PromptContent, isGroup: boolean = false, userId?: string, quotedMessageId?: string, model?: { providerID: string; modelID: string }, groupName?: string): Promise<any> {
+async function sendPrompt(sessionId: string, content: PromptContent, isGroup: boolean = false, userId?: string, quotedMessageId?: string, model?: { providerID: string; modelID: string }, groupName?: string, groupMemory?: string, groupId?: string): Promise<any> {
   // Prefix to prevent interactive question tool (blocks the API)
   let prefixed = `[IMPORTANT: Always respond directly with text. Do NOT use the question tool to ask clarifying questions. If unsure, make your best guess and explain your assumptions.]\n\n`
 
@@ -141,6 +141,14 @@ async function sendPrompt(sessionId: string, content: PromptContent, isGroup: bo
   if (isGroup) {
     if (groupName) {
       prefixed += `[Group Info: ${groupName}]\n\n`
+    }
+    if (groupId) {
+      if (groupMemory) {
+        const trimmed = groupMemory.length > 2000 ? groupMemory.slice(0, 2000) + "\n...(truncated)" : groupMemory
+        prefixed += `[Group Memory — file: memory-${groupId}.md]\n${trimmed}\n\n`
+      } else {
+        prefixed += `[Group Memory — file: memory-${groupId}.md — ยังไม่มีไฟล์ สร้างได้เมื่อมีข้อมูลสำคัญ]\n\n`
+      }
     }
     prefixed += `[GROUP CHAT: You are in a group chat. If this message is clearly NOT directed at you (just people chatting with each other, unrelated conversations), respond with exactly [SKIP] and nothing else. If the message mentions you, asks a question, or could be directed at you, respond normally.]\n\n`
   }
@@ -196,6 +204,16 @@ async function fetchLastAssistantMessage(sessionId: string): Promise<any> {
   } catch {
     // ignore
   }
+  return null
+}
+
+async function readGroupMemory(groupId: string): Promise<string | null> {
+  try {
+    const result = await opencodeRequest("GET", `/file/content?path=memory-${groupId}.md`)
+    if (result?.content && typeof result.content === "string") {
+      return result.content
+    }
+  } catch {}
   return null
 }
 
@@ -813,7 +831,13 @@ https://jibjib-meditation.pages.dev
       } catch {}
     }
 
-    const result = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId, model, groupName)
+    // Read group memory from workspace
+    let groupMemory: string | null = null
+    if (groupId) {
+      groupMemory = await readGroupMemory(groupId)
+    }
+
+    const result = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId, model, groupName, groupMemory, groupId)
 
     // Extract response from all part types
     let responseText = extractResponse(result)
