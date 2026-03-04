@@ -16,6 +16,7 @@ services:
       - ODOO_DB=${ODOO_DB:-}
       - ODOO_USERNAME=${ODOO_USERNAME:-}
       - ODOO_PASSWORD=${ODOO_PASSWORD:-}
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
     volumes:
       - ${PROJECT_DIR:-./workspace}:/workspace
       - opencode-data:/root/.local/share/opencode
