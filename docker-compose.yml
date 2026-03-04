@@ -12,6 +12,10 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - QWEN_API_KEY=${QWEN_API_KEY:-}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - ODOO_URL=${ODOO_URL:-}
+      - ODOO_DB=${ODOO_DB:-}
+      - ODOO_USERNAME=${ODOO_USERNAME:-}
+      - ODOO_PASSWORD=${ODOO_PASSWORD:-}
     volumes:
       - ${PROJECT_DIR:-./workspace}:/workspace
       - opencode-data:/root/.local/share/opencode

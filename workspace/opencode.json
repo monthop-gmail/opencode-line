@@ -1,0 +1,60 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "gh_grep": {
+      "type": "remote",
+      "url": "https://mcp.grep.app"
+    },
+    "jbchain": {
+      "type": "local",
+      "command": ["npx", "-y", "@mcpdotdirect/evm-mcp-server"],
+      "environment": {
+        "RPC_URL": "https://rpc-l1.jibchain.net",
+        "CHAIN_ID": "8899"
+      },
+      "enabled": true
+    },
+    "kubchain": {
+      "type": "local",
+      "command": ["npx", "-y", "@mcpdotdirect/evm-mcp-server"],
+      "environment": {
+        "RPC_URL": "https://rpc.bitkubchain.io",
+        "CHAIN_ID": "96"
+      },
+      "enabled": true
+    },
+    "kubtestnet": {
+      "type": "local",
+      "command": ["npx", "-y", "@mcpdotdirect/evm-mcp-server"],
+      "environment": {
+        "RPC_URL": "https://rpc-testnet.bitkubchain.io",
+        "CHAIN_ID": "25925"
+      },
+      "enabled": true
+    },
+    "kubl2testnet": {
+      "type": "local",
+      "command": ["npx", "-y", "@mcpdotdirect/evm-mcp-server"],
+      "environment": {
+        "RPC_URL": "https://kublayer2.testnet.kubchain.io",
+        "CHAIN_ID": "259251"
+      },
+      "enabled": true
+    },
+    "odoo-mcp-tarad": {
+      "type": "local",
+      "command": ["odoo-mcp"],
+      "enabled": true,
+      "environment": {
+        "ODOO_URL": "{env:ODOO_URL}",
+        "ODOO_DB": "{env:ODOO_DB}",
+        "ODOO_USERNAME": "{env:ODOO_USERNAME}",
+        "ODOO_PASSWORD": "{env:ODOO_PASSWORD}"
+      }
+    }
+  }
+}

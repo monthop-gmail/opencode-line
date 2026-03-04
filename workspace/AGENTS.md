@@ -11,6 +11,46 @@
 - ผู้ใช้ไม่สามารถเห็น tool output โดยตรง — สรุปผลลัพธ์เป็นข้อความตอบกลับ
 - ข้อความตอบกลับควรสั้นกระชับ (LINE มีจำกัด 5000 ตัวอักษร)
 
+## MCP Tools ที่ใช้ได้
+- **context7** — ค้นหา documentation ของ library/framework ต่างๆ (เช่น `use context7` เพื่อดู docs ล่าสุด)
+- **gh_grep** — ค้นหา code ตัวอย่างจาก GitHub repositories
+- **odoo-mcp-tarad** — เชื่อมต่อ Odoo ERP (query data, manage records)
+- **jbchain** — EVM blockchain: JIB Chain (chain 8899)
+- **kubchain** — EVM blockchain: Bitkub Chain (chain 96)
+- **kubtestnet** — EVM blockchain: Bitkub Testnet (chain 25925)
+- **kubl2testnet** — EVM blockchain: Kub L2 Testnet (chain 259251)
+
+## Workspace Structure
+```
+/workspace/
+  projects/       # งานจริง — แต่ละตัวมี git repo แยก
+  playground/     # ทดลอง/เรียนรู้
+  repos/          # clone มาอ้างอิง
+  docs/           # เอกสารทั่วไป
+  memory-*.md     # ความจำแต่ละ project
+  skill-*.md      # MCP skills
+```
+
+**สำคัญ: เมื่อสร้าง project ใหม่ ให้สร้างใน `projects/` เสมอ** พร้อม `git init`
+
+### projects/ (งานจริง)
+| Folder | Description |
+|--------|-------------|
+| ccss-math-k-cc-framework | CCSS Math framework |
+| hosting-skill | Hosting skill |
+| location-share | Location sharing app |
+| location-share-pwa | Location share PWA |
+| location-share-scripts | Location share scripts |
+| lottery-checker | Lottery checker |
+| odoo-line-bot | Odoo LINE bot |
+| opencode-line | OpenCode LINE bot source |
+| opencode-line-productivity-store | Productivity store |
+
+### repos/ (อ้างอิง)
+| Folder | Repo | Description |
+|--------|------|-------------|
+| odoo-mcp-claude | monthop-gmail/odoo-mcp-claude | Odoo MCP server source |
+
 ## Environment
 - Runtime: Alpine Linux (Docker container)
 - Tools: git, curl, jq, gh (GitHub CLI), python3, wget
@@ -18,8 +58,9 @@
 - Working directory: `/workspace`
 
 ## GitHub Repos
-- Bot source code: `monthop-gmail/opencode-line` (ไม่ได้อยู่ใน workspace นี้)
-- Issues: https://github.com/monthop-gmail/opencode-line/issues
+- **Bot source code:** `monthop-gmail/opencode-line` (Public)
+- **Workspace Repo:** `monthop-gmail/workspace-onboard-opencode` (Private)
+- **Issues:** https://github.com/monthop-gmail/opencode-line/issues
 
 ## GitHub Workflow
 Use `gh` CLI for issues and PRs:
@@ -34,27 +75,11 @@ gh pr list --repo monthop-gmail/opencode-line
 gh pr create --repo monthop-gmail/opencode-line --title "Title" --body "Description"
 ```
 
-## Projects in Workspace
-
-### opencode-playground-workspace-007
-- Repo: `monthop-gmail/opencode-playground-workspace-007`
-- Live: https://opencode-playground-workspace-007.pages.dev
-- CI/CD: GitHub Actions → Cloudflare Pages (push to main = auto deploy)
-- Content: เว็บอวยพร CNY + Workshop guide
-- Workflow: `.github/workflows/deploy.yml` uses `cloudflare/pages-action@v1`
-- เมื่อแก้ไข code ให้ commit + push แล้ว Cloudflare จะ deploy ให้อัตโนมัติ
-
-### Other projects
-- `cny-greeting/` - CNY greeting project
-- `simple-project/` - Simple project
-- น้องๆในทีมใช้ทดสอบ code ผ่าน LINE chat
-
 ## Language
 - ตอบเป็นภาษาไทยเป็นหลัก ยกเว้น code/technical terms
 - ใช้ภาษาสุภาพ เป็นกันเอง
 
 ## Rules
 - ห้ามลบ project ของคนอื่นใน workspace
-- สร้าง project ใหม่ในโฟลเดอร์แยก
-- ใช้ git init สำหรับ project ใหม่
+- **สร้าง project ใหม่ใน `projects/` เสมอ** พร้อม `git init`
 - เมื่อพบ bug หรือมี feature idea ให้สร้าง GitHub issue

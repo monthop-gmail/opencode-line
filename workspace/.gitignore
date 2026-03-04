@@ -1,0 +1,7 @@
+# Folders ที่มี git repos แยก - ไม่รวมใน workspace repo
+projects/
+playground/
+repos/
+
+# Internal
+.memory/

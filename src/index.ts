@@ -118,7 +118,7 @@ const PROMPT_TIMEOUT_MS = Number(process.env.PROMPT_TIMEOUT_MS ?? 120_000) // 2 
 
 type PromptContent = string | { parts: Array<{ type: string; text?: string; image?: { url: string } }> }
 
-async function sendPrompt(sessionId: string, content: PromptContent, isGroup: boolean = false, userId?: string, quotedMessageId?: string, model?: { providerID: string; modelID: string }): Promise<any> {
+async function sendPrompt(sessionId: string, content: PromptContent, isGroup: boolean = false, userId?: string, quotedMessageId?: string, model?: { providerID: string; modelID: string }, groupName?: string): Promise<any> {
   // Prefix to prevent interactive question tool (blocks the API)
   let prefixed = `[IMPORTANT: Always respond directly with text. Do NOT use the question tool to ask clarifying questions. If unsure, make your best guess and explain your assumptions.]\n\n`
 
@@ -139,6 +139,9 @@ async function sendPrompt(sessionId: string, content: PromptContent, isGroup: bo
   prefixed += `${getTimeContext()}\n\n`
 
   if (isGroup) {
+    if (groupName) {
+      prefixed += `[Group Info: ${groupName}]\n\n`
+    }
     prefixed += `[GROUP CHAT: You are in a group chat. If this message is clearly NOT directed at you (just people chatting with each other, unrelated conversations), respond with exactly [SKIP] and nothing else. If the message mentions you, asks a question, or could be directed at you, respond normally.]\n\n`
   }
 
@@ -200,14 +203,32 @@ async function abortSession(sessionId: string): Promise<void> {
   await opencodeRequest("POST", `/session/${sessionId}/abort`).catch(() => {})
 }
 
+function getErrorHint(errMsg: string): string {
+  const msg = errMsg.toLowerCase()
+  if (msg.includes("rate limit") || msg.includes("429") || msg.includes("too many"))
+    return "💡 ใช้งานถี่เกินไป — รอสักครู่แล้วลองส่งใหม่"
+  if (msg.includes("500") || msg.includes("internal") || msg.includes("unavailable") || msg.includes("model serving"))
+    return "💡 AI server มีปัญหาชั่วคราว — ลองส่งใหม่ หรือพิมพ์ /model เพื่อเปลี่ยน model"
+  if (msg.includes("401") || msg.includes("auth") || msg.includes("unauthorized") || msg.includes("forbidden"))
+    return "💡 ระบบมีปัญหาเรื่องสิทธิ์ — กรุณาแจ้ง admin"
+  if (msg.includes("timeout") || msg.includes("timed out"))
+    return "💡 AI ใช้เวลานานเกินไป — ลองส่งใหม่ หรือพิมพ์ /new เริ่ม session ใหม่"
+  if (msg.includes("context") || msg.includes("too long") || msg.includes("token"))
+    return "💡 ข้อความยาวเกินไป — พิมพ์ /new เริ่ม session ใหม่แล้วส่งใหม่"
+  return "💡 ลองส่งใหม่อีกครั้ง หรือพิมพ์ /new เริ่ม session ใหม่"
+}
+
 // --- Extract response text from all part types ---
 function extractResponse(result: any): string {
-  // Check for API error in response info
-  if (result?.info?.error) {
+  // Check for API error in response info (skip abort errors — handled by timeout logic)
+  if (result?.info?.error && !result._truncated) {
     const err = result.info.error
     const errMsg = err.data?.message || err.name || "Unknown error"
-    log("⚠️ API error:", errMsg)
-    return `❌ API Error: ${errMsg}`
+    if (!errMsg.toLowerCase().includes("aborted")) {
+      log("⚠️ API error:", errMsg)
+      const hint = getErrorHint(errMsg)
+      return `❌ API Error: ${errMsg}\n\n${hint}`
+    }
   }
 
   if (!result?.parts) return "เสร็จแล้วครับ (ไม่มีข้อความตอบกลับ)"
@@ -309,7 +330,7 @@ interface UserProfile {
 }
 const userProfiles = new Map<string, UserProfile>()
 
-async function getUserProfile(userId: string): Promise<UserProfile | null> {
+async function getUserProfile(userId: string, groupId?: string): Promise<UserProfile | null> {
   // Check cache first
   const cached = userProfiles.get(userId)
   if (cached && Date.now() - cached.lastSeen < 3600000) { // 1 hour cache
@@ -319,7 +340,10 @@ async function getUserProfile(userId: string): Promise<UserProfile | null> {
   }
 
   try {
-    const profile = await lineClient.getProfile(userId)
+    // In group: use getGroupMemberProfile (getProfile only works for 1:1 friends)
+    const profile = groupId
+      ? await lineClient.getGroupMemberProfile(groupId, userId)
+      : await lineClient.getProfile(userId)
     const userProfile: UserProfile = {
       userId,
       displayName: profile.displayName || "Unknown",
@@ -507,16 +531,24 @@ async function handleTextMessage(
   sessionKey: string | null = userId,
   isGroup: boolean = false,
   quotedMessageId?: string,
+  groupId?: string,
 ): Promise<void> {
   const userName = userProfiles.get(userId)?.displayName || userId.slice(-8)
   log(`💬 ${userName}: "${text.slice(0, 80)}${text.length > 80 ? "..." : ""}" [group:${isGroup}, key:${sessionKey?.slice(-8)}, quoted:${quotedMessageId || "none"}]`)
 
   // Special commands
   if (text.toLowerCase() === "/new") {
+    const oldSession = sessionKey ? sessions.get(sessionKey) : null
+    let msg = "เริ่ม session ใหม่แล้วครับ ส่งข้อความมาได้เลย!"
+    if (oldSession) {
+      const profile = userProfiles.get(oldSession.userId)
+      const msgCount = profile?.messageCount || 0
+      msg = `ปิด session เดิม (ID: ...${oldSession.sessionId.slice(-8)}, ข้อความ: ${msgCount})\n\nเริ่ม session ใหม่แล้วครับ ส่งข้อความมาได้เลย!`
+    }
     if (sessionKey) sessions.delete(sessionKey)
     await lineClient.replyMessage({
       replyToken,
-      messages: [{ type: "text", text: "เริ่ม session ใหม่แล้วครับ ส่งข้อความมาได้เลย!" }],
+      messages: [{ type: "text", text: msg }],
     })
     return
   }
@@ -769,10 +801,19 @@ https://jibjib-meditation.pages.dev
   }
 
   try {
-    // Get user profile for context
-    await getUserProfile(userId)
-    
-    const result = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId, model)
+    // Get user profile for context (groupId needed for getGroupMemberProfile)
+    await getUserProfile(userId, groupId)
+
+    // Get group name for context
+    let groupName: string | undefined
+    if (groupId) {
+      try {
+        const summary = await lineClient.getGroupSummary(groupId)
+        groupName = summary.groupName
+      } catch {}
+    }
+
+    const result = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId, model, groupName)
 
     // Extract response from all part types
     let responseText = extractResponse(result)
@@ -805,7 +846,7 @@ https://jibjib-meditation.pages.dev
 
     // In group: skip if AI decides message isn't for it
     const trimmedResponse = responseText.trim()
-    if (isGroup && (trimmedResponse === "[SKIP]" || trimmedResponse.startsWith("[SKIP]\n") || trimmedResponse.startsWith("[SKIP] "))) {
+    if (isGroup && /^\[S[KI]{1,3}P\]/i.test(trimmedResponse)) {
       log(`⏭️ Skipped: "${text.slice(0, 60)}${text.length > 60 ? "..." : ""}"`)
       return
     }
@@ -1022,6 +1063,7 @@ Bun.serve({
             sessionKey,
             isGroup,
             quotedMessageId,
+            event.source.groupId,
           ).catch((err) => {
             console.error("Error handling text message:", err)
           })
