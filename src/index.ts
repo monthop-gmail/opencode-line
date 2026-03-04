@@ -802,8 +802,10 @@ https://jibjib-meditation.pages.dev
 
   // Get or create OpenCode session
   let session = sessionKey ? sessions.get(sessionKey) : null
+  let isNewSession = false
 
   if (!session) {
+    isNewSession = true
     console.log("Creating new OpenCode session...")
     try {
       const result = await createSession(`LINE: ${userId.slice(-8)}${isGroup ? " (group)" : ""}`)
@@ -843,9 +845,9 @@ https://jibjib-meditation.pages.dev
       } catch {}
     }
 
-    // Read group memory from workspace
+    // Read group memory from workspace (only on new session to avoid context bloat)
     let groupMemory: string | null = null
-    if (groupId) {
+    if (groupId && isNewSession) {
       groupMemory = await readGroupMemory(groupId, groupName)
     }
 
@@ -902,7 +904,12 @@ https://jibjib-meditation.pages.dev
         const newResult = await createSession(`LINE: ${userId.slice(-8)}${isGroup ? " (group)" : ""}`)
         session = { sessionId: newResult.id, userId, isGroup, timeoutCount: 0 }
         if (sessionKey) sessions.set(sessionKey, session)
-        const retryResult = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId, model)
+        // Re-read group memory for retry (new session)
+        let retryMemory: string | null = null
+        if (groupId) {
+          retryMemory = await readGroupMemory(groupId, groupName)
+        }
+        const retryResult = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId, model, groupName, retryMemory, groupId)
         const retryText = extractResponse(retryResult)
         await sendMessage(sessionKey || userId, retryText, replyToken)
         return
