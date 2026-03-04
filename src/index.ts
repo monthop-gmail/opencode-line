@@ -207,13 +207,24 @@ async function fetchLastAssistantMessage(sessionId: string): Promise<any> {
   return null
 }
 
-async function readGroupMemory(groupId: string): Promise<string | null> {
+async function readGroupMemory(groupId: string, groupName?: string): Promise<string | null> {
+  // Try groupId-based file first (new naming)
   try {
     const result = await opencodeRequest("GET", `/file/content?path=memory-${groupId}.md`)
     if (result?.content && typeof result.content === "string") {
       return result.content
     }
   } catch {}
+  // Fallback: try groupName-based file (old naming)
+  if (groupName) {
+    try {
+      const slug = groupName.toLowerCase().replace(/[^a-z0-9ก-๙]+/g, "-").replace(/^-|-$/g, "")
+      const result = await opencodeRequest("GET", `/file/content?path=memory-${slug}.md`)
+      if (result?.content && typeof result.content === "string") {
+        return result.content
+      }
+    } catch {}
+  }
   return null
 }
 
@@ -828,13 +839,14 @@ https://jibjib-meditation.pages.dev
       try {
         const summary = await lineClient.getGroupSummary(groupId)
         groupName = summary.groupName
+        log(`📂 Group: ${groupName} (${groupId})`)
       } catch {}
     }
 
     // Read group memory from workspace
     let groupMemory: string | null = null
     if (groupId) {
-      groupMemory = await readGroupMemory(groupId)
+      groupMemory = await readGroupMemory(groupId, groupName)
     }
 
     const result = await sendPrompt(session.sessionId, text, isGroup, userId, quotedMessageId, model, groupName, groupMemory, groupId)
