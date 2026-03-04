@@ -6,10 +6,12 @@ LINE Bot powered by **OpenCode** — AI assistant ที่ใช้ผ่าน
 
 ```
 LINE app → Cloudflare Tunnel → line-bot (Bun, :3000) → OpenCode (:4096) → AI Model
+                                                              ↕
+                                                        MCP tools (stdio)
 ```
 
 3 Docker services:
-- **opencode** — OpenCode server with Anthropic/DeepSeek/Google/OpenAI/Qwen providers (Alpine)
+- **opencode** — OpenCode server with Anthropic/DeepSeek/Google/OpenAI/Qwen providers + MCP tools (Alpine)
 - **line-bot** — LINE webhook handler (Bun/TypeScript)
 - **cloudflared** — Cloudflare tunnel (exposes webhook to internet)
 
@@ -51,6 +53,13 @@ docker logs opencode-server --tail 30
 | `LINE_OA_URL` | LINE Official Account URL |
 | `ANTHROPIC_API_KEY` | Anthropic API key ([get one](https://console.anthropic.com/settings/keys)) |
 | `DEEPSEEK_API_KEY` | DeepSeek API key (optional) |
+| `GOOGLE_API_KEY` | Google AI API key (optional, for Gemini models) |
+| `QWEN_API_KEY` | Qwen/DashScope API key (optional, for Qwen models) |
+| `ODOO_URL` | Odoo server URL (for odoo-mcp) |
+| `ODOO_DB` | Odoo database name |
+| `ODOO_USERNAME` | Odoo username |
+| `ODOO_PASSWORD` | Odoo password |
+| `BRAVE_API_KEY` | Brave Search API key (for brave-search MCP) |
 | `OPENCODE_PASSWORD` | OpenCode server password (default: changeme) |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Cloudflare tunnel token |
 | `PROMPT_TIMEOUT_MS` | Prompt timeout (default: 120000) |
@@ -92,6 +101,21 @@ docker logs opencode-server --tail 30
 - Default: **Big Pickle (Free)**
 - Model preference stored per group/user session
 - `/model` (ไม่ใส่ชื่อ) → ดู model ปัจจุบัน + ตัวเลือก
+
+## MCP Tools
+
+Bot มี MCP tools สำหรับเชื่อมต่อระบบภายนอก (config: `workspace/opencode.json`):
+
+| MCP Server | Transport | Description |
+|------------|-----------|-------------|
+| **context7** | remote | ค้นหา documentation ของ library/framework ต่างๆ |
+| **gh_grep** | remote | ค้นหา code ตัวอย่างจาก GitHub repositories |
+| **odoo-mcp-tarad** | local (stdio) | Odoo ERP integration (XML-RPC) — [source](https://github.com/monthop-gmail/odoo-mcp-claude) |
+| **brave-search** | local (npx) | ค้นหาข้อมูลจากเว็บ (Brave Search API) |
+| **jbchain** | local | EVM blockchain: JIB Chain (chain 8899) |
+| **kubchain** | local | EVM blockchain: Bitkub Chain (chain 96) |
+| **kubtestnet** | local | EVM blockchain: Bitkub Testnet (chain 25925) |
+| **kubl2testnet** | local | EVM blockchain: Kub L2 Testnet (chain 259251) |
 
 ## Web Routes
 
