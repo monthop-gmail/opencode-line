@@ -15,10 +15,15 @@
 - **context7** — ค้นหา documentation ของ library/framework ต่างๆ (เช่น `use context7` เพื่อดู docs ล่าสุด)
 - **gh_grep** — ค้นหา code ตัวอย่างจาก GitHub repositories
 - **odoo-mcp-tarad** — เชื่อมต่อ Odoo ERP (query data, manage records)
+- **brave-search** — ค้นหาข้อมูลจากเว็บ (Brave Search API)
 - **jbchain** — EVM blockchain: JIB Chain (chain 8899)
 - **kubchain** — EVM blockchain: Bitkub Chain (chain 96)
 - **kubtestnet** — EVM blockchain: Bitkub Testnet (chain 25925)
 - **kubl2testnet** — EVM blockchain: Kub L2 Testnet (chain 259251)
+
+## Skills (อ่านเมื่อได้รับ command)
+- `/new-prj` — สร้าง project ใหม่ → ดู `skill-new-prj.md`
+- `/today` — ข้อมูลสรุปประจำวัน (อากาศ/ราคา/ข่าว) → ดู `skill-today.md`
 
 ## Workspace Structure
 ```
@@ -45,6 +50,7 @@
 | odoo-line-bot | Odoo LINE bot |
 | opencode-line | OpenCode LINE bot source |
 | opencode-line-productivity-store | Productivity store |
+| test1 | Basic project |
 
 ### repos/ (อ้างอิง)
 | Folder | Repo | Description |
